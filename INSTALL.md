@@ -70,6 +70,8 @@ After merging the foundation into `main`, a maintainer must:
 1. Confirm Actions are enabled and repository/organization policy permits the
    pinned actions, `contents: write` for branch publishing, `pages: write` for
    requesting a legacy Pages build, and `security-events: write` for SARIF uploads.
+   Approve the initial pull request's workflow runs if GitHub marks them
+   **action required**; these runs cannot execute until a maintainer approves them.
 2. Confirm the default branch remains `main`, private vulnerability reporting
    and Dependabot alerts are enabled, and code scanning accepts workflow uploads.
    If CodeQL default setup is enabled, switch to advanced setup to use this workflow.
