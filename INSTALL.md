@@ -55,7 +55,10 @@ The Pages workflow publishes only from `main` (push or manual dispatch).
 It copies `docs/` into a staging directory and stamps legal/source links with
 the source commit, then publishes to the root of `gh-pages`. The first
 successful run creates that branch automatically. Do not edit generated files
-on `gh-pages`.
+on `gh-pages`. Since `GITHUB_TOKEN` pushes do not automatically trigger legacy
+Pages builds, the workflow explicitly requests a build through the Pages API.
+It then checks the published branch's build status and verifies that the live
+page contains the expected source revision.
 
 This preserves the existing Otterdog configuration: **legacy** Pages build,
 source branch **gh-pages**, path **/**, and the **github-pages** environment
@@ -78,6 +81,9 @@ After merging the foundation into `main`, a maintainer must:
    [SIG Release quality checks](https://eclipse-tractusx.github.io/sig-release/).
    Ask SIG Release to register the product if it is not included in the dashboard's
    central discovery configuration; a metadata file alone cannot guarantee listing.
+   The checker may flag missing `DEPENDENCIES` or Helm charts even before a release
+   or where no charts are shipped. Review applicability with SIG Release rather
+   than creating placeholder inventories or charts to silence those findings.
 6. Confirm the CODEOWNERS team has repository write access and configure required
    reviews/status checks through Otterdog as appropriate.
 
