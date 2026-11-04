@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/eclipse-tractusx/tractusx-starter-kit/blob/main/SECURITY.md
+    about: Follow the private reporting process; do not open a public issue.

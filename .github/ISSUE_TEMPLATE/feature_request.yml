@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: CC-BY-4.0
+# Source: https://github.com/eclipse-tractusx/tractusx-starter-kit/blob/main/.github/ISSUE_TEMPLATE/feature_request.yml
+
+name: Feature request
+description: Suggest an improvement to the Starter Kit.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Who would benefit and what problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the desired behavior and any alternatives considered.
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Copyright (c) 2026 Contributors to the Eclipse Foundation · [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode)
+        · [Template source](https://github.com/eclipse-tractusx/tractusx-starter-kit/blob/main/.github/ISSUE_TEMPLATE/feature_request.yml)
