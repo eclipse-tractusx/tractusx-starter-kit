@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logos/svg/tractusx-starter-kit_horizontal-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logos/svg/tractusx-starter-kit_horizontal-light.svg">
+    <img alt="Eclipse Tractus-X Starter Kit logo" src="assets/logos/svg/tractusx-starter-kit_horizontal-light.svg" width="480">
+  </picture>
+</p>
+
 # Eclipse Tractus-X Starter Kit
 
 > [!NOTE]

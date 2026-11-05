@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+# Copyright (c) 2026 Catena-X Automotive Network e.V.
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This work is made available under the terms of the
+# Creative Commons Attribution 4.0 International (CC-BY-4.0) license,
+# which is available at https://creativecommons.org/licenses/by/4.0/legalcode.
+#
+# SPDX-License-Identifier: CC-BY-4.0
+
+version = 1
+SPDX-PackageName = "tractusx-starter-kit"
+SPDX-PackageSupplier = "Eclipse Tractus-X <tractusx-dev@eclipse.org>"
+SPDX-PackageDownloadLocation = "https://github.com/eclipse-tractusx/tractusx-starter-kit"
+
+# Eclipse Tractus-X Starter Kit logos (SVG, PNG and JPG variants)
+[[annotations]]
+path = "assets/logos/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "2026 Contributors to the Eclipse Foundation",
+  "2026 Catena-X Automotive Network e.V.",
+]
+SPDX-License-Identifier = "CC-BY-4.0"
