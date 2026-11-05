@@ -23,6 +23,14 @@ For authorship information, consult the source repository history.
   [Creative Commons Attribution 4.0 International](LICENSE_non-code)
   (SPDX-License-Identifier: CC-BY-4.0).
 
+## Logos
+
+The Eclipse Tractus-X Starter Kit logos in [`assets/logos/`](assets/logos/) are
+Copyright (c) 2026 Contributors to the Eclipse Foundation and
+Copyright (c) 2026 Catena-X Automotive Network e.V., and are made available under
+[CC-BY-4.0](LICENSE_non-code) (SPDX-License-Identifier: CC-BY-4.0).
+Licensing metadata is declared in [`REUSE.toml`](REUSE.toml).
+
 ## Source Code
 
 https://github.com/eclipse-tractusx/tractusx-starter-kit
