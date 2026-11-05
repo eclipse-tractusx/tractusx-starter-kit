@@ -77,8 +77,39 @@ The Starter Kit is community-driven as part of the **Tractus-X Accelerator**. Th
 - **Open meeting:** bi-weekly on Thursday, see [Tractus-X Open Meetings](https://eclipse-tractusx.github.io/community/open-meetings/)
 - **Issues:** look for [`good first issue`](https://github.com/eclipse-tractusx/tractusx-starter-kit/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and [`help wanted`](https://github.com/eclipse-tractusx/tractusx-starter-kit/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 - **Mailing list:** [tractusx-dev@eclipse.org](https://accounts.eclipse.org/mailing-list/tractusx-dev)
-- **Contribution guidelines:** see the [Tractus-X Community Guide](https://eclipse-tractusx.github.io/community/intro)
+- **Contribution guidelines:** see [CONTRIBUTING.md](CONTRIBUTING.md) and the [Tractus-X Community Guide](https://eclipse-tractusx.github.io/community/intro)
+
+## Getting started
+
+The wizard and generated Compose setup are not released yet. Visit the
+[documentation site](https://eclipse-tractusx.github.io/tractusx-starter-kit/)
+for the initial landing page, or follow [INSTALL.md](INSTALL.md) to preview it locally.
+No application build or package installation is currently required.
+
+## Repository governance
+
+- [Contribution guide and license headers](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy and private vulnerability reporting](SECURITY.md)
+- [Legal notices](NOTICE.md)
+- [TRG baseline, security checks, Pages activation, and release prerequisites](INSTALL.md#repository-baseline)
+- [Tractus-X Release Guidelines](https://eclipse-tractusx.github.io/docs/release)
+- [Quality checks dashboard](https://eclipse-tractusx.github.io/sig-release/)
+
+Changes will be documented using
+[GitHub release notes](https://github.com/eclipse-tractusx/tractusx-starter-kit/releases)
+starting with the first release.
 
 ## License
 
-Distributed under the Apache 2.0 License (code) and CC-BY-4.0 (documentation and non-code content). License files will be added as part of the initial repository setup ([#1](https://github.com/eclipse-tractusx/tractusx-starter-kit/issues/1)).
+Distributed under [Apache-2.0](LICENSE) for code and
+[CC-BY-4.0](LICENSE_non-code) for documentation and non-code content.
+See [NOTICE.md](NOTICE.md) for attribution and third-party notices.
+
+## NOTICE
+
+This work is licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode).
+
+- SPDX-License-Identifier: CC-BY-4.0
+- SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+- Source URL: https://github.com/eclipse-tractusx/tractusx-starter-kit/blob/main/README.md
