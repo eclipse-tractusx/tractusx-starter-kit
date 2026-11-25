@@ -64,6 +64,25 @@ Not included in Level 1: Keycloak, Portal, BPDM, Discovery services, full DTR.
 - One YAML template per supported Tractus-X release milestone (e.g. latest and previous), derived from existing release information
 - CI smoke test: generate, start and run one transfer for every supported combination
 
+## Developer toolbox
+
+The **Eclipse Tractus-X developer toolbox** is part of the Starter Kit. It is the Starter
+Kit's entry point for automated end-to-end (E2E) tests:
+
+| | Starter Kit setup | Developer toolbox |
+|---|---|---|
+| For | Trying Tractus-X on your laptop | Testing a product in CI on every pull request |
+| Runs on | Docker Compose | A [kind](https://kind.sigs.k8s.io/) cluster inside the GitHub runner |
+| Built from | The wizard's generated files | The [Tractus-X Umbrella](https://github.com/eclipse-tractusx/tractus-x-umbrella) chart, pinned |
+| Lifetime | As long as you keep it | One workflow run, then deleted |
+
+The toolbox holds two connectors with wallets, an IssuerService, a BDRS and a Digital Twin
+Registry. A reusable GitHub workflow builds it, runs a product's E2E test against it and
+reports the result on the pull request.
+
+- [What the developer toolbox is and how it runs](https://eclipse-tractusx.github.io/tutorial-resources/e2e-testing/reference/toolbox/)
+- [Tutorial: E2E tests in Eclipse Tractus-X](https://eclipse-tractusx.github.io/tutorial-resources/e2e-testing/)
+
 ## Roadmap and status
 
 Work is organized in GitHub issues and planned in 2-week iterations:
