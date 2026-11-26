@@ -77,8 +77,11 @@ Kit's entry point for automated end-to-end (E2E) tests:
 | Lifetime | As long as you keep it | One workflow run, then deleted |
 
 The toolbox holds two connectors with wallets, an IssuerService, a BDRS and a Digital Twin
-Registry. A reusable GitHub workflow builds it, runs a product's E2E test against it and
-reports the result on the pull request.
+Registry. It is the [`developer-toolbox`](developer-toolbox) action in this repository. A
+reusable GitHub workflow in `tutorial-resources` calls it, runs a product's E2E test against
+it and reports the result on the pull request.
+
+- [The developer toolbox action: inputs, outputs, usage](developer-toolbox/README.md)
 
 - [What the developer toolbox is and how it runs](https://eclipse-tractusx.github.io/tutorial-resources/e2e-testing/reference/toolbox/)
 - [Tutorial: E2E tests in Eclipse Tractus-X](https://eclipse-tractusx.github.io/tutorial-resources/e2e-testing/)

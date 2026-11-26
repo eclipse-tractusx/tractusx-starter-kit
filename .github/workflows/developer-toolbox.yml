@@ -1,0 +1,102 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# Bring the developer toolbox up on every change to it, and check that the
+# dataspace it hands back answers.
+
+name: Developer toolbox
+
+on:
+  pull_request:
+    paths:
+      - "developer-toolbox/**"
+      - ".github/workflows/developer-toolbox.yml"
+  push:
+    branches: [main]
+    paths:
+      - "developer-toolbox/**"
+      - ".github/workflows/developer-toolbox.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  toolbox:
+    name: Start the developer toolbox
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Start the developer toolbox
+        id: toolbox
+        uses: ./developer-toolbox
+
+      - name: Check what the toolbox hands back
+        env:
+          VARIABLES_FILE: ${{ steps.toolbox.outputs.variables-file }}
+          DTR_BASE_URL: ${{ steps.toolbox.outputs.dtr-base-url }}
+          SUBMODEL_SERVER_URL: ${{ steps.toolbox.outputs.submodel-server-url }}
+        run: |
+          set -euo pipefail
+          test -s "${VARIABLES_FILE}"
+          python - "${VARIABLES_FILE}" <<'PY'
+          import sys
+
+          import yaml
+
+          variables = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))["variables"]
+          required = {
+              "infrastructure.sut.dtr.base_url",
+              "infrastructure.engine.dtr.base_url",
+              "dtr_internal_url",
+              "mock_server_external_url",
+              "stub_caller_url",
+              "product_internal_url",
+          }
+          missing = sorted(key for key in required if not variables.get(key))
+          if missing:
+              raise SystemExit(f"variables-file is missing: {', '.join(missing)}")
+          print(f"variables-file holds {len(variables)} variables.")
+          PY
+          curl --fail-with-body --silent --show-error "${DTR_BASE_URL}/api/v3/shell-descriptors" > /dev/null
+          curl --fail-with-body --silent --show-error "${SUBMODEL_SERVER_URL}/health"
+          echo
+
+      - name: Collect cluster diagnostics
+        if: ${{ failure() || cancelled() }}
+        uses: ./developer-toolbox/diagnostics
+        with:
+          output-dir: ci-logs
+
+      - name: Upload cluster diagnostics
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: developer-toolbox-diagnostics
+          path: ci-logs/
+          retention-days: 14
+
+      - name: Delete kind cluster
+        if: always()
+        env:
+          TOOLBOX_CLUSTER: ${{ steps.toolbox.outputs.cluster-name }}
+        run: kind delete cluster --name "${TOOLBOX_CLUSTER:-tck-e2e}" || true
