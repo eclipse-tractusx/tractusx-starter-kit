@@ -35,6 +35,8 @@ metadata:
   name: tck-stub
   namespace: umbrella
   labels: { app: tck-stub }
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/stub: runtime/default
 spec:
   serviceAccountName: tck-stub
   automountServiceAccountToken: false
@@ -46,11 +48,15 @@ spec:
   containers:
     - name: stub
       image: python:3.12-alpine
+      imagePullPolicy: Always
       env: [{ name: PYTHONDONTWRITEBYTECODE, value: "1" }]
       command: ["python", "/stub/stub_caller.py", "--port", "8080"]
       ports: [{ containerPort: 8080 }]
       readinessProbe:
         httpGet: { path: /health, port: 8080 }
+      livenessProbe:
+        httpGet: { path: /health, port: 8080 }
+        periodSeconds: 20
       resources:
         requests: { cpu: 10m, memory: 32Mi }
         limits: { cpu: 200m, memory: 128Mi }

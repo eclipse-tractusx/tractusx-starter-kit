@@ -36,6 +36,8 @@ metadata:
   name: tck-submodel
   namespace: umbrella
   labels: { app: tck-submodel }
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/submodel: runtime/default
 spec:
   serviceAccountName: tck-submodel
   automountServiceAccountToken: false
@@ -47,11 +49,15 @@ spec:
   containers:
     - name: submodel
       image: python:3.12-alpine
+      imagePullPolicy: Always
       env: [{ name: PYTHONDONTWRITEBYTECODE, value: "1" }]
       command: ["python", "/submodel/submodel_server.py", "--port", "8080"]
       ports: [{ containerPort: 8080 }]
       readinessProbe:
         httpGet: { path: /health, port: 8080 }
+      livenessProbe:
+        httpGet: { path: /health, port: 8080 }
+        periodSeconds: 20
       resources:
         requests: { cpu: 10m, memory: 32Mi }
         limits: { cpu: 200m, memory: 128Mi }

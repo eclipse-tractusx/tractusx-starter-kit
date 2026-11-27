@@ -23,6 +23,8 @@ metadata:
   name: {{ .Release.Name }}
   namespace: {{ .Release.Namespace }}
   labels: { app: {{ .Release.Name }} }
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/whoami: runtime/default
 spec:
   serviceAccountName: default
   automountServiceAccountToken: false
@@ -34,7 +36,7 @@ spec:
   containers:
     - name: whoami
       image: traefik/whoami:v{{ .Chart.AppVersion }}
-      imagePullPolicy: IfNotPresent
+      imagePullPolicy: Always
       args: ["--name", {{ .Values.message | quote }}, "--port", "8080"]
       ports: [{ containerPort: 8080 }]
       securityContext:
