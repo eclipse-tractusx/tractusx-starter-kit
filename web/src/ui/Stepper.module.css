@@ -1,0 +1,96 @@
+.stepper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.step:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.step:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.current {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.number {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.current .number {
+  border-color: var(--tx-gold-dark);
+  background: var(--tx-gold);
+  color: #000000;
+}
+
+.done .number {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.summary {
+  overflow: hidden;
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Narrow screens: the steps become a scrolling row */
+@media (max-width: 60rem) {
+  .stepper {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .stepper li {
+    flex: none;
+  }
+
+  .summary {
+    display: none;
+  }
+}

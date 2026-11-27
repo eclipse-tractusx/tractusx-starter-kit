@@ -1,0 +1,111 @@
+/*
+ * Design tokens: the Eclipse Tractus-X documentation theme (Eclipse Tractus-X EDC docs,
+ * docs/assets/stylesheets/tractusx-edc.css), which follows the TestLab
+ * documentation and the Dataspace Management UI: the Eclipse Tractus-X warm yellow #FFA600
+ * (the colour of the official logo) on black, Manrope
+ * 800 titles, hairline borders, a soft glow on hover, a visible focus ring and
+ * the small Eclipse Tractus-X corner radius.
+ *
+ * Every component reads these variables and nothing else, so a colour or a
+ * radius changes in one place.
+ */
+
+:root {
+  --tx-gold: #ffa600;
+  --tx-gold-light: #ffbb33;
+  --tx-gold-dark: #c27c00;
+  --tx-gold-ink: #8a5300; /* warm yellow text on white: 6.4:1 */
+  --tx-black: #000000;
+  --tx-gray: #1e1e1e;
+
+  --radius: 6px;
+  --radius-sm: 4px;
+  --radius-pill: 999px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --font: "Manrope Variable", "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", ui-monospace, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  --header-height: 5.25rem;
+  --content-width: 76rem;
+
+  /* One control height for every button, field and select */
+  --ctrl-height: 2.5rem;
+  --ctrl-height-sm: 2rem;
+}
+
+:root,
+[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f6f6f4;
+  --surface-3: #eeeeea;
+  --fg: #111111;
+  --fg-muted: rgba(0, 0, 0, 0.62);
+  --fg-subtle: rgba(0, 0, 0, 0.45);
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --link: var(--tx-gold-ink);
+  --accent: var(--tx-gold-dark);
+  --accent-fg: var(--tx-gold-ink);
+  --accent-soft: rgba(194, 124, 0, 0.1);
+  --accent-contrast: #000000;
+  --glow: 0 0 0 1px rgba(194, 124, 0, 0.35), 0 10px 28px -12px rgba(0, 0, 0, 0.22);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --focus: 0 0 0 3px rgba(194, 124, 0, 0.45);
+  --code-bg: #f6f6f4;
+  --info: #2b44d4;
+  --info-soft: rgba(43, 68, 212, 0.08);
+  --success: #1f7a3a;
+  --success-soft: rgba(31, 122, 58, 0.1);
+  --warning: #8a5a00;
+  --warning-soft: rgba(194, 124, 0, 0.12);
+  --danger: #b3261e;
+  --danger-soft: rgba(179, 38, 30, 0.08);
+}
+
+[data-theme="dark"] {
+  --bg: #0e0e0e;
+  --surface: var(--tx-gray);
+  --surface-2: #161616;
+  --surface-3: #262626;
+  --fg: #ececec;
+  --fg-muted: rgba(255, 255, 255, 0.66);
+  --fg-subtle: rgba(255, 255, 255, 0.45);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --link: var(--tx-gold);
+  --accent: var(--tx-gold);
+  --accent-fg: var(--tx-gold);
+  --accent-soft: rgba(255, 166, 0, 0.1);
+  --accent-contrast: #000000;
+  --glow: 0 0 0 1px rgba(255, 166, 0, 0.4), 0 12px 32px -12px rgba(255, 166, 0, 0.22);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --focus: 0 0 0 3px rgba(255, 166, 0, 0.45);
+  --code-bg: #161616;
+  --info: #8fa0ff;
+  --info-soft: rgba(107, 130, 255, 0.12);
+  --success: #6fd08c;
+  --success-soft: rgba(111, 208, 140, 0.1);
+  --warning: #ffa600;
+  --warning-soft: rgba(255, 166, 0, 0.1);
+  --danger: #ff8a80;
+  --danger-soft: rgba(255, 138, 128, 0.1);
+}
