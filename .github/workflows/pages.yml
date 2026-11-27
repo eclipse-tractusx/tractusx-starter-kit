@@ -105,6 +105,9 @@ jobs:
         with:
           name: samples
           path: samples
+      # Artifacts do not keep file modes: make the bundles' scripts executable again.
+      - name: Restore the executable bits
+        run: find samples -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           version: v3.21.3
