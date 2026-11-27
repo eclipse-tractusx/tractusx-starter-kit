@@ -18,7 +18,7 @@
 
 name: TruffleHog
 
-# Pull requests and pushes scan only their own commits; the nightly run scans
+# Pull requests and pushes scan only their own commits; the weekly run (Sunday night) scans
 # the whole history of main, so nothing older slips through.
 on:
   push:
@@ -26,7 +26,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "37 3 * * *"
+    - cron: "37 3 * * 0" # Sundays, 03:37 UTC
   workflow_dispatch:
 
 permissions:
