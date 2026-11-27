@@ -16,17 +16,30 @@
   padding: var(--space-8) 0;
 }
 
+/* The steps run top to bottom, joined by a line, like the commands you type. */
 .installSteps {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-5);
+  max-width: 56rem;
 }
 
 .installStep {
+  position: relative;
   display: flex;
   gap: var(--space-4);
   align-items: flex-start;
   min-width: 0;
+}
+
+.installStep:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 2.5rem;
+  bottom: calc(-1 * var(--space-5) + 0.5rem);
+  left: calc(1rem - 1px);
+  width: 2px;
+  background: var(--border-strong);
 }
 
 .installNumber {
@@ -292,9 +305,6 @@
 }
 
 @media (max-width: 960px) {
-  .installSteps {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .split {
     grid-template-columns: minmax(0, 1fr);
   }
