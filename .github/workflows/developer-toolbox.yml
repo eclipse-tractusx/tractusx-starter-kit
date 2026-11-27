@@ -73,6 +73,54 @@ jobs:
           PLAN: ${{ steps.toolbox.outputs.plan-file }}
         run: python -m json.tool "${PLAN}"
 
+  local:
+    name: Local toolbox on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      TOOLBOX_HOME: ${{ github.workspace }}/.toolbox-home
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      # The bring-up itself is the `toolbox` job's: the action and ./toolbox
+      # share every script. This checks what only ./toolbox does: its Python
+      # environment, the tool downloads, the render on macOS, /etc/hosts edits.
+      - name: Render a configuration with ./toolbox
+        run: |
+          set -euo pipefail
+          ./developer-toolbox/toolbox --help
+          ./developer-toolbox/toolbox render --config developer-toolbox/examples/multi-participant.yaml
+
+      - name: Check the /etc/hosts block is added and removed cleanly
+        run: |
+          set -euo pipefail
+          "${TOOLBOX_HOME}/venv/bin/python" - <<'PY'
+          import sys
+
+          sys.path.insert(0, "developer-toolbox/scripts")
+          import local_toolbox as toolbox
+
+          original = "127.0.0.1 localhost\n::1 localhost\n"
+          added = toolbox.without_block(original, "a") + toolbox.hosts_block("a", ["x.local", "y.local"])
+          assert "127.0.0.1 x.local" in added, added
+          again = toolbox.without_block(added, "a") + toolbox.hosts_block("a", ["x.local", "y.local"])
+          assert again == added, "adding twice changed the file"
+          other = added + toolbox.hosts_block("b", ["z.local"])
+          assert toolbox.without_block(other, "a") == original + toolbox.hosts_block("b", ["z.local"])
+          assert toolbox.without_block(added, "a") == original, toolbox.without_block(added, "a")
+          print("hosts block: ok")
+          PY
+
   toolbox:
     name: Start the developer toolbox
     needs: configurations

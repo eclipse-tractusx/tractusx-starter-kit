@@ -38,6 +38,60 @@ Most product teams do not call it directly: the reusable
 [E2E workflow](https://eclipse-tractusx.github.io/tutorial-resources/e2e-testing/reference/workflow/)
 in `tutorial-resources` calls it for them.
 
+## Run it on your machine
+
+The same dataspace, from the same configuration, runs on your laptop in Docker, so you can
+develop a Tractus-X solution against it, or run the E2E tests before you push:
+
+```bash
+git clone https://github.com/eclipse-tractusx/tractusx-starter-kit
+cd tractusx-starter-kit
+./developer-toolbox/toolbox up --config developer-toolbox/examples/minimal.yaml
+```
+
+It needs Docker (Docker Desktop, Rancher Desktop, Colima or Docker Engine) and Python 3.10
+or later, on macOS or Linux; on Windows, use WSL 2. kind, kubectl and Helm are taken from your
+`PATH`; any that are missing are downloaded once, in the versions the action pins, and
+checked against their published checksums.
+
+`up` takes the same configuration file as the action's `config` input, and prints every
+participant at the end: its DID, BPN, management API and key, DSP address and registry.
+
+| Command | What it does |
+| --- | --- |
+| `toolbox up [--config FILE]` | Start the dataspace. `--memory 6g` caps what the cluster may use, so it cannot take memory from your other containers. `--no-hosts` leaves `/etc/hosts` alone. |
+| `toolbox info` | Show the participants, their URLs and API keys, and the variables file. `--json` prints them as JSON, `--variables-file` prints only that file's path. |
+| `toolbox status` | Show the dataspace's pods. |
+| `toolbox kubectl …`, `toolbox helm …` | Run kubectl or Helm against the dataspace, for example `toolbox kubectl logs -n umbrella deploy/umbrella-provider-connector-controlplane`. |
+| `toolbox testlab run my.tck` | Run TestLab, in the version `testlab.version` names, with the variables file. |
+| `toolbox hosts` | Add the dataspace hostnames to `/etc/hosts`; `--print` only prints the lines. |
+| `toolbox render [--config FILE]` | Only read the configuration, then render and validate the release: no cluster. |
+| `toolbox down` | Delete the cluster, the `/etc/hosts` lines and everything the toolbox stored. |
+
+What it changes on your machine, and where:
+
+- **The kind cluster.** Its ingress listens on `127.0.0.1:80` and `:443`, so ports 80 and 443
+  must be free, and the dataspace is not reachable from your network.
+- **A kubeconfig of its own**, in `~/.tractusx-developer-toolbox`. Your current kubectl context
+  is never used or changed.
+- **The dataspace hostnames**, such as `provider.local`, in `/etc/hosts`, between two marker
+  lines, so your browser, your application and TestLab reach the participants by the names
+  in their DIDs. Adding them needs sudo, which asks for your password. `up` brings the
+  dataspace up without them when it cannot ask (`--no-hosts`, or no terminal); then run
+  `toolbox hosts` later.
+- **A Python virtual environment and the downloaded tools**, also in
+  `~/.tractusx-developer-toolbox`. Set `TOOLBOX_HOME` to put them somewhere else.
+
+Your own application can run in the cluster, as an entry under
+[`applications`](#stand-ins-applications-and-testlab) with an image you built (`docker build -t
+my-app:dev .`, then `images: [my-app:dev]`), or on your machine, talking to the participants'
+URLs. A pod reaches your machine at the address `mock_server_external_url` names in the
+variables file.
+
+Keep the dataspace small: two connectors need about 4 GB of memory for Docker, and every
+further connector about 1.5 GB more. [`examples/minimal.yaml`](examples/minimal.yaml) is the
+smallest: two connectors, no registry, no stand-ins.
+
 ## Configure it
 
 The configuration is a YAML file in your repository. [`toolbox.yaml`](toolbox.yaml) is the
@@ -205,12 +259,13 @@ further connector.
 
 | Path | What it is |
 | --- | --- |
-| [`action.yml`](action.yml) | The bring-up: configuration, cluster, DNS, Umbrella release, credentials, applications, preflight checks. |
+| [`action.yml`](action.yml) | The bring-up on a GitHub runner: configuration, cluster, DNS, Umbrella release, credentials, applications, preflight checks. |
+| [`toolbox`](toolbox) | The same bring-up on your machine; see [Run it on your machine](#run-it-on-your-machine). |
 | [`toolbox.yaml`](toolbox.yaml) | The default configuration, and the reference for your own. |
 | [`examples/`](examples) | More configurations. |
 | [`diagnostics/action.yml`](diagnostics/action.yml) | Collects pods, events and logs when a run fails. |
-| [`values/`](values) | The Helm values: the shared components, and the template every participant is rendered from. |
-| [`scripts/`](scripts) | Rendering and validating the configuration, credential issuance, applications, the stand-in services and the probes. |
+| [`values/`](values) | The Helm values (the shared components, and the template every participant is rendered from), the kind cluster and the stand-ins' manifests. |
+| [`scripts/`](scripts) | Rendering and validating the configuration, CoreDNS, credential issuance, applications, the stand-in services, the probes and `toolbox`'s commands. Their Python dependencies are in [`requirements.txt`](requirements.txt). |
 | [`tests/`](tests) | The configuration and chart this repository's own workflow brings up. |
 
 The bring-up, the values and the stand-in scripts come from
