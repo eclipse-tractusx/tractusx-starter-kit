@@ -1,72 +1,238 @@
+#################################################################################
 # Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
 # See the NOTICE file(s) distributed with this work for additional
 # information regarding copyright ownership.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-# https://www.apache.org/licenses/LICENSE-2.0
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+## This code was partially generated using artificial intelligence (AI) (Tool: Claude Code, Model: Claude Opus 5.5).
+## It was reviewed and tested by a human committer.
+
+# Builds the Starter Kit site (web/), checks what it generates with the real
+# tools, and publishes it to GitHub Pages: main at the root of the site, a pull
+# request from this repository under pr-preview/<number>/, linked in the pull
+# request and removed when it is closed.
 
 name: GitHub Pages
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'web/**'
+      - 'developer-toolbox/scripts/issue_credentials.py'
+      - '.github/workflows/pages.yml'
+      - '.github/scripts/update-gh-pages.sh'
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - 'web/**'
+      - 'developer-toolbox/scripts/issue_credentials.py'
+      - '.github/workflows/pages.yml'
+      - '.github/scripts/update-gh-pages.sh'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: github-pages-publication
-  cancel-in-progress: false
+env:
+  SITE_URL: https://eclipse-tractusx.github.io/tractusx-starter-kit/
 
 jobs:
-  publish:
-    if: github.ref == 'refs/heads/main' && github.repository == 'eclipse-tractusx/tractusx-starter-kit'
+  build:
+    name: Build and test the site
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # A pull request is built with a banner naming it and noindex (vite.config.ts).
+      - name: Build
+        env:
+          SITE_PREVIEW_PR: ${{ github.event.pull_request.number }}
+        run: npm run build
+      - name: Write sample bundles
+        env:
+          SAMPLES_DIR: ${{ runner.temp }}/samples
+        run: npm run samples
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site
+          path: web/dist
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: samples
+          path: ${{ runner.temp }}/samples
+          retention-days: 7
+
+  # What the site generates, checked by the tools that will run it.
+  check-outputs:
+    name: Check the generated files
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: samples
+          path: samples
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v3.21.3
+      - name: Umbrella bundles render with helm template (Helm 3)
+        run: |
+          for bundle in samples/umbrella-*; do
+            echo "::group::${bundle}"
+            (
+              cd "${bundle}" && ./pull-charts.sh
+              extra=()
+              if [ -f basyx.yaml ]; then
+                extra=(-f basyx.yaml --post-renderer "$PWD/helm-plugins/basyx-post-render/post-render.sh")
+              fi
+              helm template umbrella charts/umbrella --namespace umbrella \
+                -f profile.yaml ${extra[@]+"${extra[@]}"} -f values.yaml > rendered.yaml
+              if [ -f basyx.yaml ] && grep -q '^kind: Issuer' rendered.yaml; then
+                echo "::error::The BaSyx post-renderer left the cert-manager Issuer in ${bundle}"; exit 1
+              fi
+            )
+            echo "$(grep -c '^kind:' "${bundle}/rendered.yaml") resources"
+            echo "::endgroup::"
+          done
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v4.3.2
+      - name: The BaSyx post-renderer works as a Helm 4 plugin
+        run: |
+          cd samples/umbrella-basyx
+          HELM_PLUGINS="$PWD/helm-plugins" helm template umbrella charts/umbrella --namespace umbrella \
+            -f profile.yaml -f basyx.yaml -f values.yaml --post-renderer basyx-post-render > rendered-helm4.yaml
+          if grep -q '^kind: Issuer' rendered-helm4.yaml; then
+            echo "::error::The Helm 4 plugin left the cert-manager Issuer"; exit 1
+          fi
+          grep -c 'eclipsebasyx/digitaltwinregistry-go' rendered-helm4.yaml
+      - name: Toolbox bundles render with the developer toolbox
+        env:
+          TOOLBOX_HOME: ${{ runner.temp }}/toolbox
+        run: |
+          for bundle in samples/toolbox-*; do
+            echo "::group::${bundle}"
+            ./developer-toolbox/toolbox render --config "${bundle}/toolbox.yaml"
+            echo "::endgroup::"
+          done
+      - name: Compose bundles are valid
+        env:
+          TOKEN_SIGNER_PRIVATE_KEY: unused
+          TOKEN_SIGNER_PUBLIC_KEY: unused
+        run: |
+          for bundle in samples/compose-*; do
+            (cd "${bundle}" && docker compose config --quiet && docker compose --profile seed config --quiet)
+            docker run --rm -v "${PWD}/${bundle}/gateway/nginx.conf:/etc/nginx/nginx.conf:ro" \
+              nginx:1.27-alpine nginx -t
+          done
+
+  # Docker Compose bundles, started as a user starts them, with a data exchange: the
+  # default one (Eclipse Tractus-X registry) and one with the Eclipse BaSyx Go registry.
+  compose-e2e:
+    name: Run the Docker Compose dataspace (${{ matrix.sample }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [compose-default, compose-basyx]
+    defaults:
+      run:
+        working-directory: samples/${{ matrix.sample }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: samples
+          path: samples
+      - name: Start it
+        run: chmod +x ./*.sh ./exchange.py && ./up.sh
+      - name: Exchange data
+        run: python3 exchange.py
+      - name: The registry answers on the Eclipse Tractus-X path
+        run: |
+          curl -fsS -H 'Content-Type: application/json' \
+            -d '{"id":"urn:uuid:ci-twin","idShort":"ci","specificAssetIds":[{"name":"manufacturerPartId","value":"CI-1"}]}' \
+            http://localhost:8080/provider/dtr/api/v3/shell-descriptors
+          docker compose exec -T gateway wget -qO- --header "Host: provider-dtr.local" \
+            "http://127.0.0.1/semantics/registry/api/v3/shell-descriptors" | grep -q urn:uuid:ci-twin
+      - name: Logs
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: Stop it
+        if: always()
+        run: ./down.sh || true
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: [build, check-outputs]
+    if: >-
+      github.repository == 'eclipse-tractusx/tractusx-starter-kit' &&
+      github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
       pages: write
+    concurrency:
+      group: github-pages-publication
+      cancel-in-progress: false
     steps:
-      - name: Checkout
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: site
+      - name: Check out the deployment script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          path: tools
+          sparse-checkout: .github/scripts
           persist-credentials: false
-      - name: Build static documentation
+      - name: Publish to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p "$RUNNER_TEMP/site"
-          cp -R docs/. "$RUNNER_TEMP/site/"
-          sed -i \
-            -e "s|/blob/main/|/blob/$GITHUB_SHA/|g" \
-            -e "s|/tree/main|/tree/$GITHUB_SHA|g" \
-            -e "s|Source revision: main|Source revision: $GITHUB_SHA|g" \
-            "$RUNNER_TEMP/site/index.html"
-          test -s "$RUNNER_TEMP/site/index.html"
-          test -s "$RUNNER_TEMP/site/styles.css"
-      - name: Publish gh-pages branch
-        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ${{ runner.temp }}/site
-          enable_jekyll: false
-      # GITHUB_TOKEN pushes do not automatically trigger legacy Pages builds.
-      - name: Request and verify legacy Pages build
+          mkdir "${RUNNER_TEMP}/gh-pages"
+          cd "${RUNNER_TEMP}/gh-pages"
+          bash "${GITHUB_WORKSPACE}/tools/.github/scripts/update-gh-pages.sh" site "${GITHUB_WORKSPACE}/site"
+      # GITHUB_TOKEN pushes do not trigger legacy Pages builds on their own.
+      - name: Request and verify the Pages build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          SITE_URL: https://eclipse-tractusx.github.io/tractusx-starter-kit/
         run: |
           published_sha=$(gh api "repos/$GH_REPO/git/ref/heads/gh-pages" --jq '.object.sha')
           gh api --method POST "repos/$GH_REPO/pages/builds"
@@ -80,7 +246,7 @@ jobs:
               fi
               if [ "$status" = "built" ] &&
                 curl --fail --silent --show-error --max-time 20 "$SITE_URL" -o "$RUNNER_TEMP/published.html" &&
-                grep -Fq "Source revision: $GITHUB_SHA" "$RUNNER_TEMP/published.html"; then
+                grep -Fq "content=\"$GITHUB_SHA\"" "$RUNNER_TEMP/published.html"; then
                 echo "Verified deployment of $GITHUB_SHA at $SITE_URL"
                 exit 0
               fi
@@ -89,3 +255,156 @@ jobs:
           done
           echo "::error::Timed out waiting for the published Pages revision."
           exit 1
+
+  # Publishes the preview of a pull request from a branch of this repository and
+  # links it in the pull request. Its author can push to this repository already,
+  # so the write token gives them nothing new; for forks the job is skipped (the
+  # build job still uploads the site as an artifact).
+  preview:
+    name: Publish the preview
+    needs: build
+    if: >-
+      github.repository == 'eclipse-tractusx/tractusx-starter-kit' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+      pull-requests: write
+    # Shared with remove-preview, so a preview is never published after its removal.
+    concurrency:
+      group: site-preview-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PREVIEW_URL: https://eclipse-tractusx.github.io/tractusx-starter-kit/pr-preview/${{ github.event.pull_request.number }}/
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: site
+      - name: Check out the deployment script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: tools
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      # A newer push or the closing of the pull request may have happened while this job waited.
+      - name: Check that the pull request is still current
+        id: state
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(process.env.PR_NUMBER),
+            });
+            const current = pr.state === 'open' && pr.head.sha === process.env.HEAD_SHA;
+            if (!current) core.notice(`Pull request #${process.env.PR_NUMBER} was closed or updated; skipping.`);
+            core.setOutput('current', String(current));
+      - name: Publish to gh-pages
+        if: steps.state.outputs.current == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir "${RUNNER_TEMP}/gh-pages"
+          cd "${RUNNER_TEMP}/gh-pages"
+          bash "${GITHUB_WORKSPACE}/tools/.github/scripts/update-gh-pages.sh" preview "${PR_NUMBER}" "${GITHUB_WORKSPACE}/site"
+          gh api --method POST "repos/$GH_REPO/pages/builds" > /dev/null
+      - name: Link the preview in the pull request
+        if: steps.state.outputs.current == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- site-preview-comment -->';
+            const body = [
+              marker,
+              '### Site preview',
+              '',
+              `The Starter Kit site of this pull request is published at **${process.env.PREVIEW_URL}**`,
+              '',
+              `Built from ${process.env.HEAD_SHA.slice(0, 7)}. GitHub Pages can take a minute or two to show it. ` +
+                'The preview is updated on every push that changes the site and removed when the pull ' +
+                'request is closed.',
+            ].join('\n');
+            const issue_number = Number(process.env.PR_NUMBER);
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number, body,
+              });
+            }
+
+  remove-preview:
+    name: Remove the preview
+    if: >-
+      github.repository == 'eclipse-tractusx/tractusx-starter-kit' &&
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pages: write
+      pull-requests: write
+    concurrency:
+      group: site-preview-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      MERGED: ${{ github.event.pull_request.merged }}
+    steps:
+      - name: Check out the deployment script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: tools
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Remove from gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir "${RUNNER_TEMP}/gh-pages"
+          cd "${RUNNER_TEMP}/gh-pages"
+          bash "${GITHUB_WORKSPACE}/tools/.github/scripts/update-gh-pages.sh" remove "${PR_NUMBER}"
+          gh api --method POST "repos/$GH_REPO/pages/builds" > /dev/null
+      - name: Update the preview comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- site-preview-comment -->';
+            const issue_number = Number(process.env.PR_NUMBER);
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+            if (!existing) return;
+            const merged = process.env.MERGED === 'true';
+            const body = [
+              marker,
+              '### Site preview',
+              '',
+              'The preview was removed because this pull request was closed.' +
+                (merged ? ` The changes appear on ${process.env.SITE_URL} once main is published.` : ''),
+            ].join('\n');
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+            });
