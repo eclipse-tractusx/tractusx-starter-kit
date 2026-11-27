@@ -1,6 +1,7 @@
-# kics-scan disable=4a20ebac-1060-4c81-95d1-1f7f620e983b,48a5beba-e4c0-4584-a2aa-e6894e4cf424
+# kics-scan disable=4a20ebac-1060-4c81-95d1-1f7f620e983b,48a5beba-e4c0-4584-a2aa-e6894e4cf424,8b36775e-183d-4d46-b0f7-96a6f34a723f
 # LimitRange and ResourceQuota are namespace policies of the cluster the toolbox
 # deploys into, not of this manifest; a quota here would also cap the whole Umbrella release.
+# No AppArmor annotation: kind nodes often cannot enforce AppArmor, and the kubelet then refuses the pod.
 #################################################################################
 # Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
@@ -39,8 +40,6 @@ metadata:
   name: tck-submodel
   namespace: umbrella
   labels: { app: tck-submodel }
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/submodel: runtime/default
 spec:
   serviceAccountName: tck-submodel
   automountServiceAccountToken: false

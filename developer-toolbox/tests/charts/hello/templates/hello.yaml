@@ -1,6 +1,7 @@
-# kics-scan disable=4a20ebac-1060-4c81-95d1-1f7f620e983b,48a5beba-e4c0-4584-a2aa-e6894e4cf424,e84eaf4d-2f45-47b2-abe8-e581b06deb66,7c81d34c-8e5a-402b-9798-9f442630e678
+# kics-scan disable=4a20ebac-1060-4c81-95d1-1f7f620e983b,48a5beba-e4c0-4584-a2aa-e6894e4cf424,e84eaf4d-2f45-47b2-abe8-e581b06deb66,7c81d34c-8e5a-402b-9798-9f442630e678,8b36775e-183d-4d46-b0f7-96a6f34a723f
 # LimitRange and ResourceQuota (and the namespace boundary check) are namespace policies of the cluster the toolbox
 # deploys into, not of this manifest; a quota here would also cap the whole Umbrella release.
+# No AppArmor annotation: kind nodes often cannot enforce AppArmor, and the kubelet then refuses the pod.
 # This test chart pulls traefik/whoami by tag, like the toolbox's own tck-echo pod.
 #################################################################################
 # Copyright (c) 2026 Contributors to the Eclipse Foundation
@@ -27,8 +28,6 @@ metadata:
   name: {{ .Release.Name }}
   namespace: {{ .Release.Namespace }}
   labels: { app: {{ .Release.Name }} }
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/whoami: runtime/default
 spec:
   serviceAccountName: default
   automountServiceAccountToken: false
