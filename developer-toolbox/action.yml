@@ -1,0 +1,798 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# Eclipse Tractus-X developer toolbox: a small dataspace inside the GitHub
+# runner. A kind cluster with the participants a YAML configuration names --
+# each one a wallet (IdentityHub) and, as configured, a connector and a Digital
+# Twin Registry -- plus a BDRS and an IssuerService, deployed from the pinned
+# Tractus-X Umbrella chart. It issues each participant's credentials, deploys
+# the stand-in services and the caller's own charts, and checks that everything
+# answers before it returns.
+#
+#   steps:
+#     - uses: actions/checkout@v4
+#     - uses: eclipse-tractusx/tractusx-starter-kit/developer-toolbox@main
+#       id: toolbox
+#       with:
+#         config: ci/toolbox.yaml        # optional; toolbox.yaml is the default
+#     - run: testlab run my.tck --config "${{ steps.toolbox.outputs.variables-file }}"
+#     - if: failure() || cancelled()
+#       uses: eclipse-tractusx/tractusx-starter-kit/developer-toolbox/diagnostics@main
+#
+# The configuration is described in README.md; toolbox.yaml is the default
+# and the reference. The bring-up was moved here from the reusable E2E workflow
+# in eclipse-tractusx/tutorial-resources, which took it from TestLab's own E2E
+# workflow:
+#   https://github.com/eclipse-tractusx/tractusx-testlab/blob/e75ebb96ee3793fab2372213868df3296094da1c/.github/workflows/e2e-umbrella.yml
+
+name: Eclipse Tractus-X developer toolbox
+description: >-
+  Create a Tractus-X dataspace in the runner (kind + pinned Umbrella chart) from
+  a YAML configuration: any number of participants with wallets, connectors and
+  Digital Twin Registries, an IssuerService and a BDRS, with credentials issued,
+  your own charts deployed and reachability checked.
+
+inputs:
+  config:
+    description: >-
+      Path to a developer toolbox configuration (YAML), merged over the
+      default toolbox.yaml. Empty: the default, two connectors and one DTR.
+    default: ""
+  render-only:
+    description: >-
+      "true" to stop after reading the configuration and validating the
+      rendered manifest (and installing TestLab): no cluster is created.
+    default: "false"
+  namespace:
+    description: Kubernetes namespace of the Umbrella release.
+    default: umbrella
+  cluster-name:
+    description: Name of the kind cluster.
+    default: tck-e2e
+  umbrella-chart-version:
+    description: Version of the Tractus-X Umbrella chart. Overrides `dataspace.umbrella.chart-version`.
+    default: ""
+  umbrella-values-ref:
+    description: >-
+      Tag of eclipse-tractusx/tractus-x-umbrella the decentralized-IdentityHub
+      profile is read from. Overrides `dataspace.umbrella.profile-ref`.
+    default: ""
+  identityhub-chart-version:
+    description: >-
+      IdentityHub and IssuerService chart release (the IdentityHub repository
+      tags each chart on its own). Overrides `dataspace.identityhub.chart-version`.
+    default: ""
+  testlab-version:
+    description: >-
+      tractusx-testlab version to install from PyPI. Overrides `testlab.version`;
+      "none" installs nothing.
+    default: ""
+  kind-version:
+    description: Version of kind.
+    default: "v0.24.0"
+  kind-node-image:
+    description: Node image of the kind cluster.
+    default: kindest/node:v1.31.0
+  kubectl-version:
+    description: Version of kubectl.
+    default: "v1.29.0"
+  helm-version:
+    description: Version of Helm.
+    default: "3.16.4"
+  helm-timeout:
+    description: How long helm install waits for the release to be ready.
+    default: "25m"
+  extra-values:
+    description: Optional extra Helm values file for the Umbrella release, applied last.
+    default: ""
+  mock-server-port:
+    description: Port on the runner that pods reach the test engine's mock server on.
+    default: "8100"
+
+outputs:
+  variables-file:
+    description: A YAML file with "variables:" for the dataspace (fixed values plus the URLs discovered at run time), ready for `testlab run --config`.
+    value: ${{ steps.variables.outputs.variables-file }}
+  participants-file:
+    description: A JSON file with every participant, its DID, BPN, credentials and the URLs it answers on.
+    value: ${{ steps.variables.outputs.participants-file }}
+  plan-file:
+    description: The resolved configuration (JSON) the toolbox deployed.
+    value: ${{ steps.config.outputs.plan-file }}
+  namespace:
+    description: Kubernetes namespace of the Umbrella release.
+    value: ${{ inputs.namespace }}
+  cluster-name:
+    description: Name of the kind cluster.
+    value: ${{ inputs.cluster-name }}
+  umbrella-chart-version:
+    description: The Umbrella chart version deployed.
+    value: ${{ steps.config.outputs.umbrella-chart-version }}
+  identityhub-chart-version:
+    description: The IdentityHub and IssuerService chart release deployed.
+    value: ${{ steps.config.outputs.identityhub-chart-version }}
+  testlab-version:
+    description: The tractusx-testlab version installed, or empty.
+    value: ${{ steps.config.outputs.testlab-version }}
+  dtr-base-url:
+    description: The Digital Twin Registry under test (the SUT's, or the first one), as the runner reaches it.
+    value: ${{ steps.variables.outputs.dtr-base-url }}
+  dtr-internal-url:
+    description: The same Digital Twin Registry API, as a pod reaches it.
+    value: ${{ steps.variables.outputs.dtr-internal-url }}
+  mock-server-external-url:
+    description: The runner's mock server, as a pod reaches it.
+    value: ${{ steps.variables.outputs.mock-server-external-url }}
+  stub-caller-url:
+    description: The stub caller, as the runner reaches it (empty when switched off).
+    value: ${{ steps.variables.outputs.stub-caller-url }}
+  submodel-server-url:
+    description: The submodel server, from the runner and from pods (empty when switched off).
+    value: ${{ steps.variables.outputs.submodel-server-url }}
+  product-internal-url:
+    description: The echo backend that stands in for a product behind the provider's connector (empty when switched off).
+    value: ${{ steps.variables.outputs.product-internal-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python 3.12
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: "3.12"
+
+    - name: Install the helper scripts' dependencies
+      shell: bash
+      run: python -m pip install --quiet --requirement "${{ github.action_path }}/requirements.txt"
+
+    # ------------------------------------------------------------------
+    # 1. Read the configuration and check what it renders, before any
+    #    cluster exists
+    # ------------------------------------------------------------------
+    - name: Read the developer toolbox configuration
+      id: config
+      shell: bash
+      env:
+        TOOLBOX_DIR: ${{ github.action_path }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_NAMESPACE: ${{ inputs.namespace }}
+        INPUT_CLUSTER: ${{ inputs.cluster-name }}
+        INPUT_UMBRELLA_CHART_VERSION: ${{ inputs.umbrella-chart-version }}
+        INPUT_UMBRELLA_VALUES_REF: ${{ inputs.umbrella-values-ref }}
+        INPUT_IDENTITYHUB_CHART_VERSION: ${{ inputs.identityhub-chart-version }}
+        INPUT_TESTLAB_VERSION: ${{ inputs.testlab-version }}
+        INPUT_KIND_VERSION: ${{ inputs.kind-version }}
+        INPUT_KIND_NODE_IMAGE: ${{ inputs.kind-node-image }}
+        INPUT_HELM_TIMEOUT: ${{ inputs.helm-timeout }}
+        INPUT_EXTRA_VALUES: ${{ inputs.extra-values }}
+        INPUT_MOCK_SERVER_PORT: ${{ inputs.mock-server-port }}
+      run: |
+        set -euo pipefail
+        out="${RUNNER_TEMP}/developer-toolbox"
+        mkdir -p "${out}"
+
+        config=()
+        if [ -n "${INPUT_CONFIG}" ]; then
+          config=(--config "$(realpath "${INPUT_CONFIG}")")
+        fi
+        # One EDR signing keypair for the run, never committed: the data plane
+        # signs the token the consumer presents at the public API and verifies
+        # it when the token comes back. render_toolbox.py seeds it into every
+        # connector's in-memory vault.
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${out}/signing.key" 2>/dev/null
+        openssl pkey -in "${out}/signing.key" -pubout -out "${out}/signing.pub"
+
+        python "${TOOLBOX_DIR}/scripts/render_toolbox.py" "${config[@]}" \
+          --out-dir "${out}" \
+          --namespace "${INPUT_NAMESPACE}" \
+          --workspace "${GITHUB_WORKSPACE}" \
+          --umbrella-chart-version "${INPUT_UMBRELLA_CHART_VERSION}" \
+          --umbrella-values-ref "${INPUT_UMBRELLA_VALUES_REF}" \
+          --identityhub-chart-version "${INPUT_IDENTITYHUB_CHART_VERSION}" \
+          --testlab-version "${INPUT_TESTLAB_VERSION}" \
+          --signing-key "${out}/signing.key" \
+          --signing-public-key "${out}/signing.pub"
+        rm -f "${out}/signing.key"
+
+        extra=""
+        if [ -n "${INPUT_EXTRA_VALUES}" ]; then
+          extra="$(realpath "${INPUT_EXTRA_VALUES}")"
+        fi
+        # A composite action has no job-level env, so the settings every later
+        # step reads go to GITHUB_ENV once, here.
+        {
+          echo "TOOLBOX_DIR=${TOOLBOX_DIR}"
+          echo "TOOLBOX_OUT=${out}"
+          echo "TOOLBOX_PLAN=${out}/plan.json"
+          echo "TOOLBOX_CLUSTER=${INPUT_CLUSTER}"
+          echo "UMBRELLA_NAMESPACE=${INPUT_NAMESPACE}"
+          echo "KIND_VERSION=${INPUT_KIND_VERSION}"
+          echo "KIND_NODE_IMAGE=${INPUT_KIND_NODE_IMAGE}"
+          echo "HELM_TIMEOUT=${INPUT_HELM_TIMEOUT}"
+          echo "UMBRELLA_EXTRA_VALUES=${extra}"
+          echo "MOCK_SERVER_PORT=${INPUT_MOCK_SERVER_PORT}"
+          echo "UMBRELLA_CI_VALUES=${TOOLBOX_DIR}/values/umbrella.values.yaml"
+          cat "${out}/toolbox.env"
+          # Single source of truth for the dataspace hostnames, used for both
+          # the runner's /etc/hosts and the cluster's CoreDNS.
+          printf 'DATASPACE_HOSTS=%s\n' "$(tr '\n' ' ' < "${out}/hosts.txt" | sed 's/ *$//')"
+        } >> "${GITHUB_ENV}"
+
+        python - "${out}/plan.json" >> "${GITHUB_OUTPUT}" <<'PY'
+        import json
+        import sys
+
+        plan = json.load(open(sys.argv[1], encoding="utf-8"))
+        stand_ins = plan["stand_ins"]
+        print(f"plan-file={sys.argv[1]}")
+        print(f"echo={str(stand_ins['echo']).lower()}")
+        print(f"stub-caller={str(stand_ins['stub_caller']).lower()}")
+        print(f"submodel-server={str(stand_ins['submodel_server']).lower()}")
+        print(f"applications={str(bool(plan['applications'])).lower()}")
+        print(f"umbrella-chart-version={plan['versions']['umbrella_chart']}")
+        print(f"identityhub-chart-version={plan['versions']['identityhub_chart']}")
+        print(f"testlab-version={plan['versions']['testlab']}")
+        PY
+
+    - name: Install TestLab
+      if: ${{ steps.config.outputs.testlab-version != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python -m pip install --quiet "tractusx-testlab==${TESTLAB_VERSION}"
+        echo "TestLab ${TESTLAB_VERSION} installed: $(command -v testlab)"
+
+    - name: Set up Helm
+      uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      with:
+        version: "${{ inputs.helm-version }}"
+
+    - name: Add Tractus-X Helm repo
+      shell: bash
+      run: |
+        helm repo add tractusx-dev https://eclipse-tractusx.github.io/charts/dev
+        helm repo update
+
+    - name: Prepare and validate the dataspace (pinned Umbrella chart)
+      shell: bash
+      run: |
+        set -euo pipefail
+        chart_dir="${RUNNER_TEMP}/umbrella"
+        rm -rf "${chart_dir}"
+        helm pull tractusx-dev/umbrella \
+          --version "${UMBRELLA_CHART_VERSION}" \
+          --untar --untardir "${RUNNER_TEMP}"
+
+        # IdentityHub and IssuerService ${IDENTITYHUB_CHART_VERSION}: Umbrella
+        # 26.03.00 pins both at chart v0.3.2 and a values file cannot move a
+        # subchart version, so the released charts are unpacked over the pinned
+        # ones by prepare_chart.py, which also restores the nested bundles
+        # Umbrella omits and declares one participant alias per participant.
+        ih_release="https://github.com/eclipse-tractusx/tractusx-identityhub/releases/download"
+        ih_charts="${RUNNER_TEMP}/identityhub-charts"
+        mkdir -p "${ih_charts}"
+        for chart in tractusx-identityhub-memory tractusx-issuerservice; do
+          curl --fail --location --silent --show-error \
+            "${ih_release}/${chart}-${IDENTITYHUB_CHART_VERSION}/${chart}-${IDENTITYHUB_CHART_VERSION}.tgz" \
+            --output "${ih_charts}/${chart}.tgz"
+          rm -rf "${ih_charts:?}/${chart}"
+          tar -xzf "${ih_charts}/${chart}.tgz" -C "${ih_charts}"
+        done
+        python "${TOOLBOX_DIR}/scripts/prepare_chart.py" \
+          --chart-dir "${chart_dir}" \
+          --identity-charts "${ih_charts}" \
+          --identityhub-version "${IDENTITYHUB_CHART_VERSION}" \
+          --plan "${TOOLBOX_PLAN}" \
+          --disabled-values "${TOOLBOX_OUT}/disabled.values.yaml"
+
+        profile_url="https://raw.githubusercontent.com/eclipse-tractusx/tractus-x-umbrella/${UMBRELLA_VALUES_REF}/charts/umbrella/values-adopter-decentralized-identityhub.yaml"
+        rendered="${RUNNER_TEMP}/umbrella-rendered.yaml"
+        helm template umbrella "${chart_dir}" \
+          --namespace "${UMBRELLA_NAMESPACE}" \
+          -f "${profile_url}" \
+          -f "${UMBRELLA_CI_VALUES}" \
+          -f "${TOOLBOX_OUT}/disabled.values.yaml" \
+          -f "${TOOLBOX_OUT}/participants.values.yaml" \
+          -f "${TOOLBOX_OUT}/vault-secrets.values.yaml" \
+          ${UMBRELLA_EXTRA_VALUES:+-f "${UMBRELLA_EXTRA_VALUES}"} \
+          > "${rendered}"
+
+        python "${TOOLBOX_DIR}/scripts/validate_manifest.py" \
+          --plan "${TOOLBOX_PLAN}" --manifest "${rendered}"
+        echo "UMBRELLA_CHART_DIR=${chart_dir}" >> "${GITHUB_ENV}"
+        echo "UMBRELLA_PROFILE_URL=${profile_url}" >> "${GITHUB_ENV}"
+        echo "UMBRELLA_RENDERED=${rendered}" >> "${GITHUB_ENV}"
+
+    # ------------------------------------------------------------------
+    # 2. Ephemeral Kubernetes cluster and its DNS
+    # ------------------------------------------------------------------
+    - name: Reclaim runner disk space
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        # The release pulls ~15 container images into the kind node, and the
+        # runner's preinstalled toolchains are worth more as free disk than
+        # they are to this job: without this, kubelet hits disk pressure and
+        # starts evicting pods mid-deploy.
+        #
+        # `rm -rf` over the Android SDK is minutes of small-file deletion,
+        # and nothing between here and `kind create cluster` needs the space
+        # — so it runs detached and is never waited on. The deploy is the
+        # first step that cares, and by then it has long finished. A
+        # `docker system prune` used to run here too; on a runner that has
+        # pulled nothing yet it freed nothing.
+        df -h /
+        sudo nohup bash -c 'rm -rf \
+          /usr/local/lib/android \
+          /usr/share/dotnet \
+          /opt/ghc \
+          /usr/local/.ghcup \
+          /opt/hostedtoolcache/CodeQL' >/dev/null 2>&1 &
+        echo "Reclaim started in the background."
+
+    - name: Set up kubectl
+      if: ${{ inputs.render-only != 'true' }}
+      uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+      with:
+        version: "${{ inputs.kubectl-version }}"
+
+    - name: Create kind cluster
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "${RUNNER_TEMP}/toolbox-bin"
+        curl --fail --location --silent --show-error --output "${RUNNER_TEMP}/toolbox-bin/kind" \
+          "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+        chmod +x "${RUNNER_TEMP}/toolbox-bin/kind"
+        echo "${RUNNER_TEMP}/toolbox-bin" >> "${GITHUB_PATH}"
+        "${RUNNER_TEMP}/toolbox-bin/kind" create cluster --name "${TOOLBOX_CLUSTER}" \
+          --image "${KIND_NODE_IMAGE}" \
+          --config "${TOOLBOX_DIR}/values/kind-config.yaml" --wait 5m
+
+    - name: Install ingress-nginx and make it the default IngressClass
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+        kubectl wait --namespace ingress-nginx \
+          --for=condition=ready pod \
+          --selector=app.kubernetes.io/component=controller \
+          --timeout=300s
+
+        # The IdentityHub, data-plane and IssuerService ingresses render with
+        # no ingressClassName, and ingress-nginx's kind manifest does not
+        # declare its class as the default — so nothing would claim them.
+        kubectl patch ingressclass nginx \
+          -p '{"metadata":{"annotations":{"ingressclass.kubernetes.io/is-default-class":"true"}}}'
+
+    - name: Point dataspace hostnames at the runner
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        for host in ${DATASPACE_HOSTS}; do
+          echo "127.0.0.1 ${host}"
+        done | sudo tee -a /etc/hosts >/dev/null
+        echo "Added to /etc/hosts:"
+        printf '  %s\n' ${DATASPACE_HOSTS}
+
+    - name: Point in-cluster DNS at the ingress controller
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Pods resolve their peers through CoreDNS, which knows nothing about
+        # the ingress hostnames; see the script.
+        python "${TOOLBOX_DIR}/scripts/patch_coredns.py" --hosts-file "${TOOLBOX_OUT}/hosts.txt"
+
+    # ------------------------------------------------------------------
+    # 3. Deploy the dataspace, the stand-ins and the caller's applications
+    # ------------------------------------------------------------------
+    - name: Pre-load release images into the kind node
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        # Best effort: nothing in this step may fail the toolbox.
+        set +e -uo pipefail
+        # Pulling ~25 images on demand inside a single-node cluster serialises
+        # against the JVM startups it is competing with, and a Docker Hub
+        # throttle shows up as an opaque readiness timeout 20 minutes later.
+        # Doing it up front is best-effort: a miss here just means the kubelet
+        # pulls it itself, but a failure is at least attributed correctly.
+        images="$(grep -hoE '^[[:space:]]*-?[[:space:]]*image:[[:space:]]*"?[^"]+"?$' \
+          "${UMBRELLA_RENDERED}" \
+          | sed -E 's/.*image:[[:space:]]*//; s/"//g' | sort -u)"
+        echo "${images}"
+        # Every image is pulled *inside* the node, through the CRI, exactly as
+        # the kubelet would. Two reasons, and neither is a preference:
+        #
+        #   * `kind load` is `docker save` piped into containerd's importer,
+        #     and a save cannot carry the digest a `tag@sha256:...` reference
+        #     names: containerd files the layers under a placeholder
+        #     (`docker.io/library/import-<date>@sha256:...`) whose digest is
+        #     not the one the pod asks for. That is worse than a miss — the
+        #     kubelet pulls the real image fine, then CreateContainer resolves
+        #     the placeholder and fails "failed to get image from containerd …
+        #     not found", and re-pulling never repairs the record, so the pod
+        #     is stuck in CreateContainerError for the life of the cluster.
+        #     That is what held `umbrella-postgres-0` and
+        #     `umbrella-issuerservice-postgresql-0` down for a whole run.
+        #   * `docker pull` + `kind load` stores every layer twice — once in
+        #     the runner's Docker, once in the node's containerd — on a disk
+        #     the kubelet is watching. Cross the eviction threshold and pods
+        #     stop being scheduled at all, which surfaces as pods that sit in
+        #     Pending until `helm install --wait` gives up. The node needs the
+        #     copy; the runner's Docker never did.
+        #
+        # The endpoint is passed explicitly because the kind base image ships
+        # `crictl` but no `/etc/crictl.yaml`, and a miss here is only a miss:
+        # the kubelet then pulls the image on demand.
+        for image in ${images}; do
+          docker exec "${TOOLBOX_CLUSTER}-control-plane" \
+            crictl --runtime-endpoint unix:///run/containerd/containerd.sock \
+            pull "${image}" >/dev/null 2>&1 \
+            && echo "loaded  ${image}" \
+            || echo "SKIPPED ${image} (the kubelet will pull it)"
+        done
+        df -h / || true
+        docker exec "${TOOLBOX_CLUSTER}-control-plane" df -h / || true
+
+    - name: Deploy the Eclipse Tractus-X developer toolbox (decentralized IdentityHub profile)
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -uo pipefail
+        # `--wait` is load-bearing, not just convenience: Helm waits for
+        # readiness *before* running post-install hooks, and the hooks seed
+        # the vaults and the issuer's claim table against services that must
+        # already be up.
+        #
+        # A bare 25-minute wait is opaque when it fails, so a watcher reports
+        # what is still outstanding while Helm blocks.
+        columns='NAME:.metadata.name'
+        columns="${columns},PHASE:.status.phase"
+        columns="${columns},RESTARTS:.status.containerStatuses[*].restartCount"
+        columns="${columns},STATE:.status.containerStatuses[*].state.*.reason"
+        columns="${columns},READY:.status.containerStatuses[*].ready"
+        (
+          tick=0
+          while true; do
+            sleep 30
+            tick=$((tick + 1))
+            echo "--- $(date -u +%H:%M:%S) waiting on the release ---"
+            # Print only the pods that are not yet fully ready (READY is the
+            # last column, one 'true'/'false' per container).
+            outstanding="$(kubectl get pods -n "${UMBRELLA_NAMESPACE}" \
+              -o "custom-columns=${columns}" 2>/dev/null \
+              | awk 'NR == 1 || $NF !~ /^(true,)*true$/')"
+            printf '%s\n' "${outstanding}"
+            # Everything in this release is normally ready inside three
+            # minutes. Past that a pod is stuck rather than starting, and
+            # "what is outstanding" stops being enough — the probe's own
+            # message is what separates the cases. A refused connection is a
+            # runtime that never opened its port; a 503 is one that opened it
+            # and reports itself unhealthy; a 404 is a probe aimed at a path
+            # the runtime does not serve. Without this the only record of a
+            # ten-minute stall is a pod name repeated twenty times.
+            if [ "${tick}" -ge 6 ]; then
+              printf '%s\n' "${outstanding}" | awk 'NR > 1 { print $1 }' \
+                | while IFS= read -r stuck; do
+                    [ -n "${stuck}" ] || continue
+                    kubectl get events -n "${UMBRELLA_NAMESPACE}" \
+                      --field-selector "involvedObject.name=${stuck},type=Warning" \
+                      -o "custom-columns=POD:.involvedObject.name,REASON:.reason,MESSAGE:.message" \
+                      --no-headers 2>/dev/null | tail -2
+                  done
+            fi
+            # One failure is not a slow start but a wedge, and waiting does
+            # not cure it: an IdentityHub or IssuerService whose JVM logged
+            # "Runtime ... ready" and whose readiness probe answers 404 from
+            # then on, liveness passing, container never restarting. Two of
+            # the last forty runs; both sat out the 25 minutes. A pod in
+            # that state two minutes after its container started is deleted
+            # here, after its probe paths are fetched from inside the
+            # cluster for the record, and its Deployment replaces it in
+            # under a minute. The rule and its limits are in the script.
+            python3 "${TOOLBOX_DIR}/scripts/restart_wedged_runtimes.py" \
+              --namespace "${UMBRELLA_NAMESPACE}" \
+              --state-dir "${RUNNER_TEMP}/wedged-runtimes" \
+              --grace-seconds 120 --max-restarts 2 2>&1 || true
+          done
+        ) &
+        watcher=$!
+        trap 'kill "${watcher}" 2>/dev/null || true' EXIT
+
+        helm install umbrella "${UMBRELLA_CHART_DIR}" \
+          --namespace "${UMBRELLA_NAMESPACE}" --create-namespace \
+          -f "${UMBRELLA_PROFILE_URL}" \
+          -f "${UMBRELLA_CI_VALUES}" \
+          -f "${TOOLBOX_OUT}/disabled.values.yaml" \
+          -f "${TOOLBOX_OUT}/participants.values.yaml" \
+          -f "${TOOLBOX_OUT}/vault-secrets.values.yaml" \
+          ${UMBRELLA_EXTRA_VALUES:+-f "${UMBRELLA_EXTRA_VALUES}"} \
+          --burst-limit 400 --qps 200 \
+          --timeout "${HELM_TIMEOUT}" --wait
+        status=$?
+
+        kill "${watcher}" 2>/dev/null || true
+        exit "${status}"
+
+    - name: Deploy in-cluster echo backend
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.echo == 'true' }}
+      shell: bash
+      run: |
+        # Minimal HTTP backend the SUT's data plane proxies pulls to. Kept
+        # cluster-internal (no ingress) — the EDC data plane reaches it
+        # over the cluster network, nothing external is required.
+        kubectl run tck-echo --image=traefik/whoami:v1.10 \
+          --namespace "${UMBRELLA_NAMESPACE}" --port=80
+        kubectl expose pod/tck-echo --namespace "${UMBRELLA_NAMESPACE}" \
+          --port=80 --name=tck-echo
+        kubectl wait --namespace "${UMBRELLA_NAMESPACE}" \
+          --for=condition=ready pod/tck-echo --timeout=120s
+
+    - name: Deploy in-cluster stub caller
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.stub-caller == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # A stand-in system under test that calls back when told to, after
+        # a delay, from its own pod (see scripts/stub_caller.py). Unlike the echo
+        # backend it needs an ingress: the *script* talks to it, and the
+        # script runs on the runner. The call it makes goes the other way,
+        # to the runner's mock server, over the gateway checked below.
+        kubectl create configmap tck-stub --namespace "${UMBRELLA_NAMESPACE}" \
+          --from-file=stub_caller.py="${TOOLBOX_DIR}/scripts/stub_caller.py"
+        sed "s/^  namespace: umbrella$/  namespace: ${UMBRELLA_NAMESPACE}/" \
+          "${TOOLBOX_DIR}/values/stand-ins/stub-caller.yaml" | kubectl apply -f -
+        kubectl wait --namespace "${UMBRELLA_NAMESPACE}" \
+          --for=condition=ready pod/tck-stub --timeout=180s
+
+    - name: Deploy in-cluster submodel server
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.submodel-server == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The payload store behind the engine's registry entries (see
+        # scripts/submodel_server.py). The Umbrella profile switches off both
+        # `simple-data-backend` bundles, so nothing in the release serves a
+        # submodel, and `digital-twin-registry/submodel/*` plus the whole Industry
+        # Core journey would have no backend to address.
+        #
+        # It is the one component both sides dial: the engine uploads to it
+        # over the ingress, and the provider's data plane fetches from it as
+        # the backend of an EDC asset. One hostname serves both, because
+        # `tck-submodel.local` is in DATASPACE_HOSTS and therefore resolves
+        # on the runner *and* in CoreDNS — so the address the upload step
+        # publishes is an address a pod can use unchanged.
+        kubectl create configmap tck-submodel --namespace "${UMBRELLA_NAMESPACE}" \
+          --from-file=submodel_server.py="${TOOLBOX_DIR}/scripts/submodel_server.py"
+        sed "s/^  namespace: umbrella$/  namespace: ${UMBRELLA_NAMESPACE}/" \
+          "${TOOLBOX_DIR}/values/stand-ins/submodel-server.yaml" | kubectl apply -f -
+        kubectl wait --namespace "${UMBRELLA_NAMESPACE}" \
+          --for=condition=ready pod/tck-submodel --timeout=180s
+
+    - name: Deploy the applications
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.applications == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python "${TOOLBOX_DIR}/scripts/deploy_applications.py" \
+          --plan "${TOOLBOX_PLAN}" --cluster "${TOOLBOX_CLUSTER}"
+
+    - name: Show dataspace pods
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        # `helm install --wait` above is the real readiness gate (it tracks
+        # every resource in the release, not just these labels). This is
+        # just a status dump for the log.
+        kubectl get pods -n "${UMBRELLA_NAMESPACE}" -o wide
+        kubectl get jobs -n "${UMBRELLA_NAMESPACE}" || true
+
+    # ------------------------------------------------------------------
+    # 4. Make the dataspace usable: issue the participants' credentials
+    # ------------------------------------------------------------------
+    - name: Issue the participants' credentials
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The IssuerService mints a one-time super-user API key at startup and
+        # only ever prints it to its own log. The 0.4.0 image colours that
+        # log line, so the key is followed by an ANSI reset (`ESC[0m`) with
+        # no space in between; the capture is limited to the key's own
+        # alphabet so the escape stays out of the `x-api-key` header, where
+        # Jetty rejects it with `400 Illegal character CNTL=0x1b`.
+        super_user_key=""
+        for _ in $(seq 1 30); do
+          super_user_key="$(kubectl logs -n "${UMBRELLA_NAMESPACE}" \
+            deployment/umbrella-issuerservice --tail=-1 2>/dev/null \
+            | sed -n 's/.*Please take note of the API Key: *\([A-Za-z0-9+\/=.]*\).*/\1/p' \
+            | tail -n 1)"
+          if [ -n "${super_user_key}" ]; then
+            break
+          fi
+          sleep 5
+        done
+        if [ -z "${super_user_key}" ]; then
+          echo "::error::Could not find the IssuerService super-user API key in its log."
+          kubectl logs -n "${UMBRELLA_NAMESPACE}" deployment/umbrella-issuerservice --tail=200 || true
+          exit 1
+        fi
+        echo "::add-mask::${super_user_key}"
+
+        python "${TOOLBOX_DIR}/scripts/issue_credentials.py" \
+          --plan "${TOOLBOX_PLAN}" \
+          --issuer-url "http://issuerservice.local" \
+          --super-user-key "${super_user_key}"
+
+    # ------------------------------------------------------------------
+    # 5. Discover what the charts didn't pin, write what the caller gets,
+    #    then sanity-check reachability
+    # ------------------------------------------------------------------
+    - name: Discover the address pods use to reach the runner
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # testlab's mock server binds 0.0.0.0:${MOCK_SERVER_PORT} on the runner. The SUT's
+        # data plane runs in a pod and fetches inbound_call.yaml's asset from
+        # that server, so it needs an address for the runner — and neither
+        # `localhost` (the pod's own loopback) nor the ingress (which routes
+        # only what the chart declared) is one. Pod egress leaves through
+        # the kind node, whose default gateway is the Docker bridge the node
+        # sits on; the host side of that bridge is the runner itself.
+        gateway="$(docker inspect "${TOOLBOX_CLUSTER}-control-plane" \
+          -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}')"
+        if [ -z "${gateway}" ]; then
+          echo "::error::Could not read the kind node's network gateway."
+          docker inspect "${TOOLBOX_CLUSTER}-control-plane" -f '{{json .NetworkSettings.Networks}}' || true
+          exit 1
+        fi
+        echo "Pods reach the runner at ${gateway}."
+        echo "MOCK_SERVER_EXTERNAL_URL=http://${gateway}:${MOCK_SERVER_PORT}" >> "$GITHUB_ENV"
+
+    - name: Write the toolbox variables
+      id: variables
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The participants' fixed values plus what is discovered here: each
+        # Digital Twin Registry's ingress prefix and Service port. A caller
+        # merges its own on top before `testlab run --config`.
+        python "${TOOLBOX_DIR}/scripts/toolbox_outputs.py" \
+          --plan "${TOOLBOX_PLAN}" \
+          --out-dir "${TOOLBOX_OUT}" \
+          --mock-server-url "${MOCK_SERVER_EXTERNAL_URL}" \
+          >> "${GITHUB_OUTPUT}"
+        echo "TOOLBOX_PARTICIPANTS=${TOOLBOX_OUT}/participants.json" >> "${GITHUB_ENV}"
+
+    - name: Preflight — check pods can reach the runner
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # A stand-in on the mock server's port, dialled from inside the
+        # cluster. Without this, a wrong gateway or a port nothing listens
+        # on surfaces twenty steps later as the SUT's data plane answering
+        # 502 — which reads as a connector fault, and is not one.
+        python3 -m http.server "${MOCK_SERVER_PORT}" --bind 0.0.0.0 --directory "${RUNNER_TEMP}" \
+          >/dev/null 2>&1 &
+        standin=$!
+        trap 'kill "${standin}" 2>/dev/null || true' EXIT
+        sleep 1
+        status="$(bash "${TOOLBOX_DIR}/scripts/probe_from_pod.sh" tck-reach "${UMBRELLA_NAMESPACE}" "${MOCK_SERVER_EXTERNAL_URL}/")"
+        if [ "${status}" != "200" ]; then
+          echo "::error::A pod could not reach the runner at ${MOCK_SERVER_EXTERNAL_URL} (got '${status}')."
+          exit 1
+        fi
+        echo "A pod reached the runner at ${MOCK_SERVER_EXTERNAL_URL}."
+
+    - name: Preflight — check the stub caller is reachable
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.stub-caller == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl --fail-with-body --silent --show-error --retry 10 --retry-delay 3 \
+          --retry-all-errors "${STUB_CALLER_URL}/health"
+        echo
+        echo "stub caller: reachable at ${STUB_CALLER_URL}"
+
+    - name: Preflight — check the submodel server is reachable both ways
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.submodel-server == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # From the runner, over the ingress: this is the address the engine
+        # uploads to.
+        curl --fail-with-body --silent --show-error --retry 10 --retry-delay 3 \
+          --retry-all-errors "${SUBMODEL_SERVER_URL}/health"
+        echo
+        # And from inside the cluster, on the *same* hostname: this is the
+        # address the provider's data plane fetches the payload from, and it
+        # only works because CoreDNS resolves the dataspace hostnames. A
+        # failure here surfaces later as an EDC transfer that negotiates
+        # cleanly and then answers 502 from the data plane.
+        status="$(bash "${TOOLBOX_DIR}/scripts/probe_from_pod.sh" tck-submodel-reach "${UMBRELLA_NAMESPACE}" "${SUBMODEL_SERVER_URL}/health")"
+        if [ "${status}" != "200" ]; then
+          echo "::error::A pod could not reach the submodel server at ${SUBMODEL_SERVER_URL} (got '${status}')."
+          exit 1
+        fi
+        echo "submodel server: reachable at ${SUBMODEL_SERVER_URL}, from the runner and from a pod"
+
+    - name: Preflight — check every connector and DTR answers
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        query='{"@context":{"edc":"https://w3id.org/edc/v0.0.1/ns/"},"@type":"QuerySpec","offset":0,"limit":1}'
+        # One line per deployed participant: name, management URL, API key,
+        # DTR base URL, DTR in-cluster URL (empty when it has none).
+        python - "${TOOLBOX_PARTICIPANTS}" > "${RUNNER_TEMP}/preflight.tsv" <<'PY'
+        import json
+        import sys
+
+        for record in json.load(open(sys.argv[1], encoding="utf-8")):
+            if record["external"]:
+                continue
+            connector = record["connector"] or {}
+            dtr = record["dtr"] or {}
+            print("\t".join((
+                record["name"],
+                connector.get("management_url", ""),
+                connector.get("api_key", ""),
+                dtr.get("base_url", ""),
+                dtr.get("internal_url", ""),
+            )))
+        PY
+        while IFS=$'\t' read -r name management api_key dtr_url dtr_internal; do
+          if [ -n "${management}" ]; then
+            curl --fail-with-body --silent --show-error \
+              --header "X-Api-Key: ${api_key}" \
+              --header "Content-Type: application/json" \
+              --request POST --data "${query}" \
+              "${management}/v3/assets/request" > /dev/null
+            echo "${name} management API: reachable"
+          fi
+          if [ -n "${dtr_url}" ]; then
+            # `--fail-with-body` earns its keep only if the body survives: a
+            # 404 from nginx matching no ingress rule and one from the registry
+            # itself have very different causes.
+            if ! dtr_body="$(curl --fail-with-body --location --silent --show-error \
+              "${dtr_url}/api/v3/shell-descriptors" 2>&1)"; then
+              echo "::error::${name} DTR API not reachable at ${dtr_url}/api/v3/shell-descriptors"
+              printf '%s\n' "${dtr_body}"
+              exit 1
+            fi
+            echo "${name} DTR API: reachable at ${dtr_url}"
+            # The same registry from inside the cluster, which is how a
+            # provider's data plane reaches it once it is published as an asset.
+            status="$(bash "${TOOLBOX_DIR}/scripts/probe_from_pod.sh" "tck-${name}-dtr-reach" \
+              "${UMBRELLA_NAMESPACE}" "${dtr_internal}/shell-descriptors")"
+            if [ "${status}" != "200" ]; then
+              echo "::error::A pod could not reach the ${name} DTR API at ${dtr_internal} (got '${status}')."
+              exit 1
+            fi
+            echo "${name} DTR API: reachable in-cluster at ${dtr_internal}"
+          fi
+        done < "${RUNNER_TEMP}/preflight.tsv"

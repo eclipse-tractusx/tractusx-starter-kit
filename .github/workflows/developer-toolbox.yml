@@ -1,0 +1,230 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# Check every developer toolbox configuration in this repository renders a
+# valid dataspace, then bring the CI configuration up and check that the
+# dataspace it hands back answers.
+
+name: Developer toolbox
+
+on:
+  pull_request:
+    paths:
+      - "developer-toolbox/**"
+      - ".github/workflows/developer-toolbox.yml"
+  push:
+    branches: [main]
+    paths:
+      - "developer-toolbox/**"
+      - ".github/workflows/developer-toolbox.yml"
+  workflow_dispatch:
+    inputs:
+      config:
+        description: Configuration to bring up (a path in this repository).
+        type: string
+        default: developer-toolbox/tests/ci.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  configurations:
+    name: Render ${{ matrix.config || 'toolbox.yaml' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - ""
+          - developer-toolbox/examples/minimal.yaml
+          - developer-toolbox/examples/multi-participant.yaml
+          - developer-toolbox/tests/ci.yaml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Render and validate the dataspace
+        id: toolbox
+        uses: ./developer-toolbox
+        with:
+          config: ${{ matrix.config }}
+          render-only: "true"
+          testlab-version: none
+
+      - name: Show the plan
+        env:
+          PLAN: ${{ steps.toolbox.outputs.plan-file }}
+        run: python -m json.tool "${PLAN}"
+
+  local:
+    name: Local toolbox on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      TOOLBOX_HOME: ${{ github.workspace }}/.toolbox-home
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      # The bring-up itself is the `toolbox` job's: the action and ./toolbox
+      # share every script. This checks what only ./toolbox does: its Python
+      # environment, the tool downloads, the render on macOS, /etc/hosts edits.
+      - name: Render a configuration with ./toolbox
+        run: |
+          set -euo pipefail
+          ./developer-toolbox/toolbox --help
+          ./developer-toolbox/toolbox render --config developer-toolbox/examples/multi-participant.yaml
+
+      # install.sh twice: from this clone (the command runs the clone), and as
+      # `curl … | bash` downloads it, from this pull request's commit.
+      - name: Install the tx-toolbox command
+        env:
+          TX_TOOLBOX_BIN: ${{ runner.temp }}/bin
+          TX_TOOLBOX_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          TX_TOOLBOX_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          export PATH="${TX_TOOLBOX_BIN}:${PATH}"
+          ./developer-toolbox/install.sh
+          tx-toolbox version | grep -q "${GITHUB_WORKSPACE}/developer-toolbox"
+          tx-toolbox examples | grep -q minimal
+          tx-toolbox --help | grep -q "uninstall"
+          (cd "${RUNNER_TEMP}" && tx-toolbox render --config minimal)
+
+          bash < developer-toolbox/install.sh
+          tx-toolbox version | grep -q "${TX_TOOLBOX_REPO}@${TX_TOOLBOX_REF}"
+          test -x "${TOOLBOX_HOME}/cli/kit/toolbox"
+          (cd "${RUNNER_TEMP}" && tx-toolbox render --config minimal)
+
+          tx-toolbox uninstall
+          test ! -e "${TX_TOOLBOX_BIN}/tx-toolbox"
+          test ! -e "${TOOLBOX_HOME}/cli"
+
+      - name: Check the /etc/hosts block is added and removed cleanly
+        run: |
+          set -euo pipefail
+          "${TOOLBOX_HOME}/venv/bin/python" - <<'PY'
+          import sys
+
+          sys.path.insert(0, "developer-toolbox/scripts")
+          import local_toolbox as toolbox
+
+          original = "127.0.0.1 localhost\n::1 localhost\n"
+          added = toolbox.without_block(original, "a") + toolbox.hosts_block("a", ["x.local", "y.local"])
+          assert "127.0.0.1 x.local" in added, added
+          again = toolbox.without_block(added, "a") + toolbox.hosts_block("a", ["x.local", "y.local"])
+          assert again == added, "adding twice changed the file"
+          other = added + toolbox.hosts_block("b", ["z.local"])
+          assert toolbox.without_block(other, "a") == original + toolbox.hosts_block("b", ["z.local"])
+          assert toolbox.without_block(added, "a") == original, toolbox.without_block(added, "a")
+          print("hosts block: ok")
+          PY
+
+  toolbox:
+    name: Start the developer toolbox
+    needs: configurations
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Start the developer toolbox
+        id: toolbox
+        uses: ./developer-toolbox
+        with:
+          config: ${{ inputs.config || 'developer-toolbox/tests/ci.yaml' }}
+
+      - name: Check what the toolbox hands back
+        env:
+          VARIABLES_FILE: ${{ steps.toolbox.outputs.variables-file }}
+          PARTICIPANTS_FILE: ${{ steps.toolbox.outputs.participants-file }}
+          DTR_BASE_URL: ${{ steps.toolbox.outputs.dtr-base-url }}
+          SUBMODEL_SERVER_URL: ${{ steps.toolbox.outputs.submodel-server-url }}
+          TESTLAB_VERSION: ${{ steps.toolbox.outputs.testlab-version }}
+        run: |
+          set -euo pipefail
+          test -s "${VARIABLES_FILE}"
+          test -s "${PARTICIPANTS_FILE}"
+          python - "${VARIABLES_FILE}" "${PARTICIPANTS_FILE}" <<'PY'
+          import json
+          import sys
+
+          import yaml
+
+          variables = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))["variables"]
+          participants = json.load(open(sys.argv[2], encoding="utf-8"))
+          required = {
+              "infrastructure.sut.connector.management_url",
+              "infrastructure.sut.connector.dsp_url",
+              "infrastructure.engine.connector.management_url",
+              "infrastructure.engine.connector.dsp_url",
+              "infrastructure.sut.dtr.base_url",
+              "infrastructure.engine.dtr.base_url",
+              "dtr_internal_url",
+              "mock_server_external_url",
+              "stub_caller_url",
+              "product_internal_url",
+              "sut_bpnl",
+              "engine_bpnl",
+          }
+          required |= {f"participants.{record['name']}.did" for record in participants}
+          missing = sorted(key for key in required if not variables.get(key))
+          if missing:
+              raise SystemExit(f"variables-file is missing: {', '.join(missing)}")
+          print(f"variables-file holds {len(variables)} variables for {len(participants)} participants.")
+          PY
+          curl --fail-with-body --silent --show-error "${DTR_BASE_URL}/api/v3/shell-descriptors" > /dev/null
+          curl --fail-with-body --silent --show-error "${SUBMODEL_SERVER_URL}/health"
+          echo
+          # The application from developer-toolbox/tests/ci.yaml, on the
+          # hostname the configuration gave it.
+          curl --fail-with-body --silent --show-error http://hello.local/ | grep -F "from-the-developer-toolbox"
+          python -m pip show tractusx-testlab | grep -Fx "Version: ${TESTLAB_VERSION}"
+          command -v testlab
+
+      - name: Collect cluster diagnostics
+        if: ${{ failure() || cancelled() }}
+        uses: ./developer-toolbox/diagnostics
+        with:
+          output-dir: ci-logs
+
+      - name: Upload cluster diagnostics
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: developer-toolbox-diagnostics
+          path: ci-logs/
+          retention-days: 14
+
+      - name: Delete kind cluster
+        if: always()
+        env:
+          TOOLBOX_CLUSTER: ${{ steps.toolbox.outputs.cluster-name }}
+        run: kind delete cluster --name "${TOOLBOX_CLUSTER:-tck-e2e}" || true

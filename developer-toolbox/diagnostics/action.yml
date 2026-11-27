@@ -1,0 +1,100 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# Collect what explains a developer toolbox that did not converge: Helm status,
+# resources, events, node conditions and every pod's logs. Writes them to
+# `output-dir` and prints the not-ready pods' last lines to the job log.
+# Run it with `if: failure() || cancelled()` after the developer toolbox action,
+# then upload `output-dir` as an artifact.
+
+name: Eclipse Tractus-X developer toolbox diagnostics
+description: Collect cluster diagnostics from the developer toolbox into a folder.
+
+inputs:
+  namespace:
+    description: Kubernetes namespace of the Umbrella release.
+    default: umbrella
+  output-dir:
+    description: Folder the diagnostics are written to.
+    default: ci-logs
+
+runs:
+  using: composite
+  steps:
+    - name: Collect cluster diagnostics
+      shell: bash
+      env:
+        UMBRELLA_NAMESPACE: ${{ inputs.namespace }}
+        OUT: ${{ inputs.output-dir }}
+      run: |
+        mkdir -p "${OUT}"
+        helm status umbrella -n "${UMBRELLA_NAMESPACE}" > "${OUT}/helm-status.txt" 2>&1 || true
+        # Every release, the applications from the toolbox configuration included.
+        helm list --all-namespaces --all > "${OUT}/helm-releases.txt" 2>&1 || true
+        kubectl get pods --all-namespaces -o wide > "${OUT}/pods-all-namespaces.txt" 2>&1 || true
+        cp "${RUNNER_TEMP}/developer-toolbox/plan.json" "${OUT}/plan.json" 2>/dev/null || true
+        kubectl get all -n "${UMBRELLA_NAMESPACE}" -o wide > "${OUT}/resources.txt" 2>&1 || true
+        kubectl get nodes -o wide > "${OUT}/nodes.txt" 2>&1 || true
+        kubectl describe nodes > "${OUT}/nodes-describe.txt" 2>&1 || true
+        kubectl top nodes > "${OUT}/nodes-top.txt" 2>&1 || true
+        kubectl get pods -n "${UMBRELLA_NAMESPACE}" -o wide > "${OUT}/pods.txt" 2>&1 || true
+        kubectl describe pods -n "${UMBRELLA_NAMESPACE}" > "${OUT}/pods-describe.txt" 2>&1 || true
+        kubectl get jobs -n "${UMBRELLA_NAMESPACE}" -o yaml > "${OUT}/jobs.yaml" 2>&1 || true
+        kubectl get ingress -n "${UMBRELLA_NAMESPACE}" -o yaml > "${OUT}/ingress.yaml" 2>&1 || true
+        kubectl get ingressclass -o yaml > "${OUT}/ingressclass.yaml" 2>&1 || true
+        kubectl -n kube-system get configmap coredns -o yaml > "${OUT}/coredns.yaml" 2>&1 || true
+        kubectl get events -n "${UMBRELLA_NAMESPACE}" --sort-by=.metadata.creationTimestamp \
+          > "${OUT}/events.txt" 2>&1 || true
+        df -h / > "${OUT}/disk.txt" 2>&1 || true
+        while IFS= read -r pod; do
+          pod_name="${pod#pod/}"
+          kubectl logs -n "${UMBRELLA_NAMESPACE}" "${pod}" --all-containers --tail=1000 \
+            > "${OUT}/${pod_name}.log" 2>&1 || true
+          kubectl logs -n "${UMBRELLA_NAMESPACE}" "${pod}" --all-containers --previous --tail=1000 \
+            > "${OUT}/${pod_name}-previous.log" 2>&1 || true
+        done < <(kubectl get pods -n "${UMBRELLA_NAMESPACE}" -o name 2>/dev/null || true)
+
+        # Everything above lands in an artifact, and an artifact is one more
+        # download between a red run and the reason for it. The three things
+        # that answer "why did the deploy not converge" — what is not ready,
+        # what the cluster warned about, and what those pods last said — are
+        # cheap enough to also put in the log.
+        echo "::group::Pods"
+        cat "${OUT}/pods.txt" || true
+        echo "::endgroup::"
+        echo "::group::Warning events"
+        kubectl get events -n "${UMBRELLA_NAMESPACE}" --field-selector type=Warning \
+          --sort-by=.metadata.creationTimestamp \
+          -o "custom-columns=OBJECT:.involvedObject.name,REASON:.reason,MESSAGE:.message" \
+          2>/dev/null | tail -40 || true
+        echo "::endgroup::"
+        echo "::group::Node conditions"
+        kubectl get nodes \
+          -o "custom-columns=NAME:.metadata.name,CONDITIONS:.status.conditions[?(@.status=='True')].type" \
+          2>/dev/null || true
+        echo "::endgroup::"
+        while IFS= read -r pod; do
+          pod_name="${pod#pod/}"
+          echo "::group::${pod_name} (last 40 lines)"
+          tail -40 "${OUT}/${pod_name}.log" 2>/dev/null || true
+          echo "::endgroup::"
+        done < <(kubectl get pods -n "${UMBRELLA_NAMESPACE}" \
+          -o "custom-columns=NAME:.metadata.name,READY:.status.containerStatuses[*].ready" \
+          --no-headers 2>/dev/null \
+          | awk '$NF !~ /^(true,)*true$/ { print "pod/" $1 }' || true)

@@ -1,0 +1,88 @@
+################################################################################
+# Eclipse Tractus-X - Tractus-X TestLab
+#
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+################################################################################
+
+## This code was partially generated using artificial intelligence (AI) (Tool: Codex, Model: GPT-5.6 Sol).
+## It was reviewed and tested by a human committer.
+
+# CI-only additions to values-adopter-decentralized-identityhub.yaml for the
+# parts of the dataspace every participant shares: the BPN directory (BDRS) and
+# the IssuerService. The participants themselves -- one connector and wallet
+# each, and their Digital Twin Registries -- are not here: scripts/
+# render_toolbox.py writes their values from values/participant.values.yaml,
+# one per participant in the toolbox configuration, along with the BDRS seeding
+# and the images the configuration names.
+#
+# Every liveness probe gets a long delay and a threshold worth minutes, for the
+# reason given in values/participant.values.yaml: on a 4-vCPU runner nothing
+# can tell "hung" from "slow" in half a minute.
+
+# Both of these ask for 500m of CPU by default. On a 4-vCPU runner that is
+# ~a third of the schedulable capacity spent on two services that idle for
+# most of the run, and it crowds out the connectors.
+bdrs-server-memory:
+  server:
+    livenessProbe:
+      initialDelaySeconds: 240
+      failureThreshold: 60
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+tractusx-issuerservice:
+  # Same for the issuer's database: the in-memory image holds its holders,
+  # credential definitions and issuance processes in the process, and the one
+  # thing that did write SQL here — the claim-seeding hook below — is off.
+  install:
+    postgresql: false
+  # The claim rows this seeds go into a table only the SQL IssuerService
+  # creates, and `psql -v ON_ERROR_STOP=1` makes the missing table a failed
+  # post-install hook — which fails the whole `helm install --wait`. The
+  # in-memory image reads claims off the holder record instead, and
+  # scripts/issue_credentials.py writes them there, so there is nothing left for
+  # this hook to seed.
+  attestationClaimSeeding:
+    enabled: false
+  issuerservice:
+    # In-memory IssuerService. Its BOM is the base one, which ships the
+    # `holder` attestation source and *not* the `database` one — the SQL BOM is
+    # what carries that. scripts/issue_credentials.py registers the holder
+    # attestation and puts the claims on each holder record, so nothing reads
+    # the `custom_attestation_claims` table Umbrella still seeds.
+    #
+    # Its image comes from the toolbox configuration (`dataspace.issuerservice`).
+    #
+    # The v0.4.0 chart waits for its bundled subcharts on a TCP probe before
+    # the runtime starts — against the *default* subchart names, `<release>-
+    # vault:8200`. Umbrella names this one `umbrella-issuerservice-vault`, so
+    # the probe never connects: 60 attempts, five minutes, then a failed init
+    # and a failed `helm install --wait`. The chart's own note says to switch
+    # it off when a subchart is renamed, which is exactly this case. Nothing
+    # is lost — the vault is a `--wait`-ed dependency of the release already.
+    waitForDependencies:
+      enabled: false
+    livenessProbe:
+      initialDelaySeconds: 240
+      failureThreshold: 60
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi

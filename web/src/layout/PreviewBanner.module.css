@@ -1,0 +1,13 @@
+.banner {
+  padding: var(--space-2) var(--space-4);
+  background: var(--tx-gold);
+  color: var(--tx-black);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: center;
+}
+
+.banner a {
+  color: inherit;
+  font-weight: 800;
+}

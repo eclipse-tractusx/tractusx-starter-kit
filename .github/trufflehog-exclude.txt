@@ -1,0 +1,5 @@
+# Paths TruffleHog skips (one regular expression per line).
+# umbrella.values.yaml: an earlier commit held the DTR data source URL, an in-cluster hostname
+# without credentials, which TruffleHog reports as an unverified JDBC secret.
+developer-toolbox/values/umbrella\.values\.yaml
+\.github/trufflehog-exclude\.txt

@@ -1,0 +1,96 @@
+# kics-scan disable=4a20ebac-1060-4c81-95d1-1f7f620e983b,48a5beba-e4c0-4584-a2aa-e6894e4cf424,8b36775e-183d-4d46-b0f7-96a6f34a723f
+# LimitRange and ResourceQuota are namespace policies of the cluster the toolbox
+# deploys into, not of this manifest; a quota here would also cap the whole Umbrella release.
+# No AppArmor annotation: kind nodes often cannot enforce AppArmor, and the kubelet then refuses the pod.
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# A stand-in system under test that calls back when told to, after a delay
+# (scripts/stub_caller.py, mounted from the ConfigMap tck-stub). It has an
+# ingress because the test engine, outside the cluster, tells it what to call.
+#
+# `namespace: umbrella` is rewritten to the release's namespace when it is applied.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tck-stub
+  namespace: umbrella
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tck-stub
+  namespace: umbrella
+  labels: { app: tck-stub }
+spec:
+  serviceAccountName: tck-stub
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: stub
+      image: python:3.12-alpine@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89
+      imagePullPolicy: Always
+      env: [{ name: PYTHONDONTWRITEBYTECODE, value: "1" }]
+      command: ["python", "/stub/stub_caller.py", "--port", "8080"]
+      ports: [{ containerPort: 8080 }]
+      readinessProbe:
+        httpGet: { path: /health, port: 8080 }
+      livenessProbe:
+        httpGet: { path: /health, port: 8080 }
+        periodSeconds: 20
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { cpu: 200m, memory: 128Mi }
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
+      volumeMounts: [{ name: stub, mountPath: /stub }]
+  volumes:
+    - name: stub
+      configMap: { name: tck-stub }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tck-stub
+  namespace: umbrella
+spec:
+  selector: { app: tck-stub }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tck-stub
+  namespace: umbrella
+spec:
+  rules:
+    - host: tck-stub.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: tck-stub, port: { number: 80 } }
