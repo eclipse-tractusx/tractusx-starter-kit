@@ -18,13 +18,15 @@
 
 name: TruffleHog
 
+# Pull requests and pushes scan only their own commits; the nightly run scans
+# the whole history of main, so nothing older slips through.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   schedule:
-    - cron: "37 3 * * 1"
+    - cron: "37 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -40,7 +42,27 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Scan secrets
+
+      - name: Scan the commits of this pull request
+        if: github.event_name == 'pull_request'
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
+        with:
+          version: 3.99.8
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --results=verified,unknown --exclude-paths=.github/trufflehog-exclude.txt
+
+      - name: Scan the pushed commits
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
+        with:
+          version: 3.99.8
+          base: ${{ github.event.before }}
+          head: ${{ github.event.after }}
+          extra_args: --results=verified,unknown --exclude-paths=.github/trufflehog-exclude.txt
+
+      - name: Scan the whole history
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.before == '0000000000000000000000000000000000000000')
         uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
         with:
           version: 3.99.8
