@@ -28,6 +28,11 @@
   tab-size: 2;
 }
 
+.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .scroll {
   max-height: var(--max-height, none);
 }

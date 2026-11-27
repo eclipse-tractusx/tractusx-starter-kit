@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
@@ -10,6 +11,9 @@ import { defineConfig } from "vitest/config";
 const previewPr = process.env.SITE_PREVIEW_PR ?? "";
 const sourceSha = process.env.GITHUB_SHA ?? "";
 
+// The guide's "Download install.sh" button: the installer of this commit, next to the page.
+const installer = new URL("../developer-toolbox/install.sh", import.meta.url);
+
 export default defineConfig({
   base: "./",
   plugins: [
@@ -21,6 +25,18 @@ export default defineConfig({
         let head = sourceSha ? `    <meta name="source-revision" content="${sourceSha}">\n` : "";
         if (previewPr) head += '    <meta name="robots" content="noindex, nofollow">\n';
         return html.replace("</head>", `${head}  </head>`);
+      },
+    },
+    {
+      name: "toolbox-installer",
+      configureServer(server) {
+        server.middlewares.use("/install.sh", (_request, response) => {
+          response.setHeader("Content-Type", "text/x-shellscript");
+          response.end(readFileSync(installer));
+        });
+      },
+      generateBundle() {
+        this.emitFile({ type: "asset", fileName: "install.sh", source: readFileSync(installer) });
       },
     },
   ],

@@ -11,33 +11,67 @@
 }
 
 .heroInner {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: var(--space-7);
-  align-items: end;
   width: min(100% - 2.5rem, var(--content-width));
   margin: 0 auto;
   padding: var(--space-8) 0;
 }
 
-.install {
+.installSteps {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-5);
+}
+
+.installStep {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-4);
+  align-items: flex-start;
   min-width: 0;
 }
 
-.installLabel {
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: var(--text-sm);
-  font-weight: 700;
+.installNumber {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--tx-gold);
+  color: #000;
+  font-weight: 800;
 }
 
-.installLabel code {
-  color: var(--tx-gold);
+.installBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.installBody h3 {
+  font-size: var(--text-lg);
+  line-height: 2rem;
+}
+
+.downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.requirements {
+  margin-top: var(--space-3);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+
+.requirements code {
+  padding: 0.05em 0.35em;
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  font-size: 0.88em;
 }
 
 .heroText {
@@ -258,7 +292,7 @@
 }
 
 @media (max-width: 960px) {
-  .heroInner {
+  .installSteps {
     grid-template-columns: minmax(0, 1fr);
   }
   .split {

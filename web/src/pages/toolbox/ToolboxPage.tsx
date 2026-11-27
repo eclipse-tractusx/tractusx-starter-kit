@@ -5,6 +5,9 @@ import { href } from "../../router";
 import { Callout, Card, CodeBlock, Icon, LinkButton, Section, Tabs, ThemedImage, type IconName } from "../../ui";
 import styles from "./ToolboxPage.module.css";
 
+const INSTALLER_SOURCE =
+  "https://github.com/eclipse-tractusx/tractusx-starter-kit/blob/main/developer-toolbox/install.sh";
+const KIT_ZIP = "https://github.com/eclipse-tractusx/tractusx-starter-kit/archive/refs/heads/main.zip";
 const SOURCE = "https://github.com/eclipse-tractusx/tractusx-starter-kit/tree/main/developer-toolbox";
 const REFERENCE = `${SOURCE}#configure-it`;
 const E2E_TUTORIAL = "https://eclipse-tractusx.github.io/tutorial-resources/e2e-testing/";
@@ -54,9 +57,9 @@ const ACTION = `jobs:
 
 const INSTALL = `curl -fsSL ${TOOLBOX_INSTALLER} | bash`;
 
-const LOCAL = `${INSTALL}
+const START = "tx-toolbox up --config minimal";
 
-tx-toolbox up --config minimal   # or your own toolbox.yaml
+const LOCAL = `tx-toolbox up --config minimal   # or your own toolbox.yaml
 tx-toolbox info                  # participants, URLs and API keys
 tx-toolbox down                  # removes everything again`;
 
@@ -146,17 +149,49 @@ export function ToolboxPage() {
               </LinkButton>
             </div>
           </div>
-          {/* The hero is black in both themes, so the block takes the dark tokens. */}
-          <div className={styles.install} data-theme="dark">
-            <span className={styles.installLabel}>
-              <Icon name="terminal" size={15} /> Install the <code>tx-toolbox</code> command
-            </span>
-            <CodeBlock title="Terminal" language="shell" code={`${INSTALL}\ntx-toolbox up --config minimal`} />
-          </div>
         </div>
       </section>
 
       <Section
+        eyebrow="Install"
+        title="One command, from any folder"
+        lead="Install tx-toolbox once. It goes into ~/.local/bin, and tx-toolbox update keeps it current."
+      >
+        <div className={styles.installSteps}>
+          <div className={styles.installStep}>
+            <span className={styles.installNumber}>1</span>
+            <div className={styles.installBody}>
+              <h3>Install the command</h3>
+              <CodeBlock title="Terminal" language="shell" code={INSTALL} wrap />
+            </div>
+          </div>
+          <div className={styles.installStep}>
+            <span className={styles.installNumber}>2</span>
+            <div className={styles.installBody}>
+              <h3>Start a dataspace</h3>
+              <CodeBlock title="Terminal" language="shell" code={START} wrap />
+            </div>
+          </div>
+        </div>
+        <div className={styles.downloads}>
+          <LinkButton variant="primary" size="lg" icon="download" href="./install.sh" download="install.sh">
+            Download install.sh
+          </LinkButton>
+          <LinkButton variant="secondary" size="lg" icon="download" href={KIT_ZIP}>
+            Download the Starter Kit (.zip)
+          </LinkButton>
+          <LinkButton variant="ghost" size="lg" icon="github" href={INSTALLER_SOURCE}>
+            Read install.sh
+          </LinkButton>
+        </div>
+        <p className={styles.requirements}>
+          Needs Docker and Python 3.10 or later, on macOS or Linux; on Windows, in WSL 2. A downloaded installer runs
+          with <code>bash install.sh</code>.
+        </p>
+      </Section>
+
+      <Section
+        alt
         eyebrow="What you get"
         title="Everything a data exchange needs, already wired"
         lead={`Built from the Umbrella chart ${toolboxPin.umbrellaChart}, with every version pinned. The cluster lives as long as the job, or until you run tx-toolbox down.`}
@@ -170,7 +205,7 @@ export function ToolboxPage() {
         </div>
       </Section>
 
-      <Section alt eyebrow="Where it runs" title="The same dataspace in CI and on your machine">
+      <Section eyebrow="Where it runs" title="The same dataspace in CI and on your machine">
         <Tabs
           label="Where the toolbox runs"
           value={where}
@@ -215,8 +250,8 @@ export function ToolboxPage() {
             <div className={styles.split}>
               <div className={styles.prose}>
                 <p>
-                  One line installs the <code>tx-toolbox</code> command into <code>~/.local/bin</code>; after that it works
-                  from any folder. <code>--config</code> takes your own <code>toolbox.yaml</code> or the name of an
+                  With <code>tx-toolbox</code> installed (above), the dataspace is one command away, from any folder.{" "}
+                  <code>--config</code> takes your own <code>toolbox.yaml</code> or the name of an
                   example. <code>tx-toolbox update</code> fetches the newest version.
                 </p>
                 <p>
@@ -235,7 +270,7 @@ export function ToolboxPage() {
         </Tabs>
       </Section>
 
-      <Section eyebrow="On your machine" title="Commands and what they change">
+      <Section alt eyebrow="On your machine" title="Commands and what they change">
         <div className={styles.split}>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
@@ -282,7 +317,6 @@ export function ToolboxPage() {
       </Section>
 
       <Section
-        alt
         eyebrow="Configure it"
         title="One toolbox.yaml, merged over the default"
         lead="Your file only holds the keys you change: mappings merge, lists such as participants replace the default. The configurator writes this file for you."

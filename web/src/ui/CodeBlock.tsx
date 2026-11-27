@@ -9,10 +9,12 @@ export interface CodeBlockProps {
   language?: "yaml" | "shell" | "text" | "markdown";
   maxHeight?: string;
   actions?: ReactNode;
+  /** Wrap long lines instead of scrolling sideways, for commands people copy. */
+  wrap?: boolean;
 }
 
 /** Code with a copy button and light highlighting for YAML and shell. */
-export function CodeBlock({ code, title, language = "text", maxHeight, actions }: CodeBlockProps) {
+export function CodeBlock({ code, title, language = "text", maxHeight, actions, wrap }: CodeBlockProps) {
   const copy = <CopyButton text={code} />;
   return (
     <div className={styles.block}>
@@ -27,7 +29,7 @@ export function CodeBlock({ code, title, language = "text", maxHeight, actions }
       )}
       {!title && <span className={styles.floating}>{copy}</span>}
       <pre
-        className={[styles.pre, maxHeight && styles.scroll].filter(Boolean).join(" ")}
+        className={[styles.pre, maxHeight && styles.scroll, wrap && styles.wrap].filter(Boolean).join(" ")}
         style={maxHeight ? ({ "--max-height": maxHeight } as CSSProperties) : undefined}
         tabIndex={0}
       >
