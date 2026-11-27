@@ -26,7 +26,7 @@
 .brand img {
   display: block;
   width: auto;
-  height: 46px;
+  height: 64px;
 }
 
 .nav {
@@ -69,21 +69,53 @@
 
 .actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   margin-left: auto;
+}
+
+/* Leaves the site: a link with an arrow out, apart from the tabs. */
+.external {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--ctrl-height-sm);
+  margin-right: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    border-color 140ms var(--ease),
+    color 140ms var(--ease);
+}
+
+.external:hover {
+  border-color: var(--tx-gold);
+  color: var(--tx-gold);
 }
 
 @media (max-width: 720px) {
   .inner {
     gap: var(--space-3);
   }
-  .nav .link:nth-child(n + 2) {
+  .nav .link:nth-child(n + 3) {
+    display: none;
+  }
+  .external span {
     display: none;
   }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 520px) {
   .brand img {
-    height: 36px;
+    height: 48px;
+  }
+  .nav {
+    display: none;
   }
 }

@@ -91,7 +91,7 @@ cd "$(dirname "$0")"
   const participants = config.participants
     .map((p) => `| \`${p.name}\` | \`${p.bpn}\` | ${p.connector ? "yes" : "no"} | ${p.connector && p.dtr ? "yes" : "no"} |`)
     .join("\n");
-  const readme = `# Developer toolbox: ${config.participants.length} participants
+  const readme = `# Eclipse Tractus-X Developer Toolbox: ${config.participants.length} participants
 
 A very small Eclipse Tractus-X dataspace for developing and testing on your machine or in
 a GitHub runner: the decentralized-identity profile of Umbrella

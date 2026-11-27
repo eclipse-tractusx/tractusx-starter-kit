@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { targetInfo } from "../../catalog/targets";
 import { bundleFor } from "../../generators";
 import { hasProblems, validate } from "../../model/dataspace";
-import { toolboxLogo } from "../../catalog/brand";
-import { Button, Stepper, ThemedImage } from "../../ui";
+import { toolboxAppIcon, toolboxLogo } from "../../catalog/brand";
+import { href } from "../../router";
+import { Button, Icon, Stepper, ThemedImage } from "../../ui";
 import { ComponentsStep } from "./ComponentsStep";
 import styles from "./Configure.module.css";
 import { ParticipantsStep } from "./ParticipantsStep";
@@ -59,11 +60,24 @@ export function ConfigurePage({ target }: { target?: string }) {
           <div className={styles.bannerInner}>
             <span>Eclipse Tractus-X Starter Kit</span>
             <p>Configure your dataspace</p>
+            {config.target === "toolbox" && (
+              <a className={styles.bannerGuide} href={href("/toolbox")}>
+                <Icon name="arrowLeft" size={14} /> Developer Toolbox guide
+              </a>
+            )}
           </div>
           {config.target === "toolbox" && (
             <ThemedImage
               className={styles.bannerLogo}
               src={toolboxLogo}
+              surface="dark"
+              alt="Eclipse Tractus-X Developer Toolbox"
+            />
+          )}
+          {config.target === "toolbox" && (
+            <ThemedImage
+              className={styles.bannerApp}
+              src={toolboxAppIcon}
               surface="dark"
               alt="Eclipse Tractus-X Developer Toolbox"
             />

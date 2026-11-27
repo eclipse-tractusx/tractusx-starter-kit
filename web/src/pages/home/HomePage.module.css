@@ -353,3 +353,23 @@
     grid-template-columns: 1fr;
   }
 }
+
+.toolboxApp {
+  display: block;
+  width: min(13rem, 60%);
+  height: auto;
+  margin-inline: auto;
+}
+
+.narrowOnly {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .wideOnly {
+    display: none;
+  }
+  .narrowOnly {
+    display: block;
+  }
+}

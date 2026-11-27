@@ -4,11 +4,12 @@ import { Header } from "./layout/Header";
 import { PreviewBanner } from "./layout/PreviewBanner";
 import { ConfigurePage } from "./pages/configure/ConfigurePage";
 import { HomePage } from "./pages/home/HomePage";
+import { ToolboxPage } from "./pages/toolbox/ToolboxPage";
 import { NotFoundPage } from "./pages/not-found/NotFoundPage";
 import { useRoute } from "./router";
 import { useTheme } from "./theme";
 
-const TITLES = { home: "", configure: "Configure", "not-found": "Not found" } as const;
+const TITLES = { home: "", configure: "Configure", toolbox: "Developer Toolbox", "not-found": "Not found" } as const;
 
 export function App() {
   const route = useRoute();
@@ -27,6 +28,11 @@ export function App() {
       {route.page === "home" && (
         <main id="main">
           <HomePage />
+        </main>
+      )}
+      {route.page === "toolbox" && (
+        <main id="main">
+          <ToolboxPage />
         </main>
       )}
       {route.page === "configure" && <ConfigurePage key={route.target ?? "configure"} target={route.target} />}

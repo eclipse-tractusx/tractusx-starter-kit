@@ -27,7 +27,7 @@ export const targets: TargetInfo[] = [
   },
   {
     id: "toolbox",
-    title: "Developer toolbox",
+    title: "Developer Toolbox",
     icon: "toolbox",
     mark: toolboxMark,
     badge: "For tests and CI",

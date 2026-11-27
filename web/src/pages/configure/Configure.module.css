@@ -50,6 +50,22 @@
   letter-spacing: -0.02em;
 }
 
+.bannerGuide {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  color: var(--tx-gold);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.bannerGuide:hover {
+  text-decoration: underline;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 13rem minmax(0, 1fr) 17rem;
@@ -340,5 +356,23 @@
   }
   .participantFields {
     grid-template-columns: 1fr;
+  }
+}
+
+.bannerApp {
+  display: none;
+  width: 6.5rem;
+  height: auto;
+}
+
+@media (max-width: 720px) {
+  .bannerLogo {
+    display: none;
+  }
+  .bannerApp {
+    display: block;
+  }
+  .bannerRow {
+    flex-wrap: nowrap;
   }
 }

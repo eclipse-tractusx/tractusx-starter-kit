@@ -1,7 +1,7 @@
 import { targets } from "../../catalog/targets";
 import { umbrellaCategories, umbrellaComponents, type UmbrellaCategory } from "../../catalog/umbrella";
 import { href } from "../../router";
-import { toolboxLogo } from "../../catalog/brand";
+import { toolboxAppIcon, toolboxLogo } from "../../catalog/brand";
 import { Badge, Card, Icon, LinkButton, Section, ThemedImage } from "../../ui";
 import styles from "./HomePage.module.css";
 
@@ -34,8 +34,8 @@ export function HomePage() {
               <LinkButton variant="primary" size="lg" iconAfter="arrowRight" href={href("/configure")}>
                 Configure a dataspace
               </LinkButton>
-              <LinkButton variant="onDark" size="lg" icon="toolbox" href={href("/configure?target=toolbox")}>
-                Developer toolbox
+              <LinkButton variant="onDark" size="lg" icon="toolbox" href={href("/toolbox")}>
+                Developer Toolbox
               </LinkButton>
             </div>
           </div>
@@ -81,9 +81,9 @@ export function HomePage() {
                     size="lg"
                     block
                     iconAfter="arrowRight"
-                    href={href(`/configure?target=${target.id}`)}
+                    href={href(target.id === "toolbox" ? "/toolbox" : `/configure?target=${target.id}`)}
                   >
-                    Configure {target.title}
+                    {target.id === "toolbox" ? "Start with the guide" : `Configure ${target.title}`}
                   </LinkButton>
                 }
               >
@@ -107,7 +107,16 @@ export function HomePage() {
 
       <section className={styles.toolbox} aria-labelledby="toolbox-title">
         <div className={styles.toolboxInner}>
-          <ThemedImage className={styles.toolboxLogo} src={toolboxLogo} alt="Eclipse Tractus-X Developer Toolbox" />
+          <ThemedImage
+            className={`${styles.toolboxLogo} ${styles.wideOnly}`}
+            src={toolboxLogo}
+            alt="Eclipse Tractus-X Developer Toolbox"
+          />
+          <ThemedImage
+            className={`${styles.toolboxApp} ${styles.narrowOnly}`}
+            src={toolboxAppIcon}
+            alt="Eclipse Tractus-X Developer Toolbox"
+          />
           <div className={styles.toolboxText}>
             <h2 id="toolbox-title">A small dataspace for your tests, here and in CI</h2>
             <p>
@@ -115,16 +124,11 @@ export function HomePage() {
               or in a GitHub runner. One toolbox.yaml decides the participants, the registries and the TestLab version.
             </p>
             <div className={styles.toolboxActions}>
-              <LinkButton variant="primary" size="lg" iconAfter="arrowRight" href={href("/configure?target=toolbox")}>
-                Configure the developer toolbox
-              </LinkButton>
-              <LinkButton
-                variant="secondary"
-                size="lg"
-                icon="github"
-                href="https://github.com/eclipse-tractusx/tractusx-starter-kit/tree/main/developer-toolbox"
-              >
+              <LinkButton variant="primary" size="lg" iconAfter="arrowRight" href={href("/toolbox")}>
                 Read the guide
+              </LinkButton>
+              <LinkButton variant="secondary" size="lg" icon="sliders" href={href("/configure?target=toolbox")}>
+                Configure the Developer Toolbox
               </LinkButton>
             </div>
           </div>
@@ -151,7 +155,7 @@ export function HomePage() {
       <Section
         eyebrow="What you can include"
         title="The Eclipse Tractus-X components of the Umbrella chart"
-        lead="Pick any of them for a Helm deployment. The Docker Compose and developer toolbox dataspaces bring the core: connectors with wallets, the IssuerService, the BPN directory and Digital Twin Registries."
+        lead="Pick any of them for a Helm deployment. The Docker Compose and Developer Toolbox dataspaces bring the core: connectors with wallets, the IssuerService, the BPN directory and Digital Twin Registries."
       >
         <div className={styles.catalog}>
           {categories.map(([id, category]) => (
