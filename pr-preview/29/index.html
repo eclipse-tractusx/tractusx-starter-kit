@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Configure an Eclipse Tractus-X dataspace and download it: Docker Compose, the developer toolbox or the Umbrella Helm chart.">
+    <meta name="color-scheme" content="light dark">
+    <title>Eclipse Tractus-X Starter Kit</title>
+    <link rel="icon" type="image/svg+xml" href="./tractusx-starter-kit_icon-dark-rounded.svg">
+    <script>
+      // Apply the saved or system theme before the first paint, so the page never flashes.
+      (function () {
+        var saved = null;
+        try { saved = localStorage.getItem("tx-theme"); } catch (e) {}
+        var dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-WfEL-tdu.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BvrZFSmv.css">
+      <meta name="source-revision" content="6c829fa39a3dbba9a0ca017d7f0e4fb194da108d">
+    <meta name="robots" content="noindex, nofollow">
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>The Starter Kit configurator needs JavaScript.</noscript>
+  </body>
+</html>
