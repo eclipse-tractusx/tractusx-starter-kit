@@ -24,10 +24,3 @@ SPDX-FileCopyrightText = [
   "2026 Catena-X Automotive Network e.V.",
 ]
 SPDX-License-Identifier = "CC-BY-4.0"
-
-# Developer toolbox: the hostname list has no room for a header
-[[annotations]]
-path = "developer-toolbox/values/hosts.txt"
-precedence = "aggregate"
-SPDX-FileCopyrightText = "2026 Contributors to the Eclipse Foundation"
-SPDX-License-Identifier = "Apache-2.0"

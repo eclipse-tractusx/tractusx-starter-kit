@@ -19,6 +19,9 @@
 # SPDX-License-Identifier: Apache-2.0
 ################################################################################
 
+## This code was partially generated using artificial intelligence (AI) (Tool: Claude Code, Model: Claude Opus 5.5).
+## It was reviewed and tested by a human committer.
+
 """Issue the Catena-X verifiable credentials the e2e dataspace needs.
 
 ``helm install`` gives you two connectors, two IdentityHubs and an
@@ -34,43 +37,44 @@ Umbrella docs ship as a Bruno collection for humans to click through:
     tractus-x-umbrella/docs/common/api/bruno/
         Data-exchange-decentralized-identityhub/Issuance/
 
-Until both IdentityHubs hold a ``MembershipCredential`` and a
-``DataExchangeGovernanceCredential``, every contract negotiation in
-``tests/connector_negotiation.yaml`` fails its ODRL policy checks — the
-connectors come up healthy and the negotiation simply never reaches AGREED.
+Until the IdentityHubs hold a ``MembershipCredential`` and a
+``DataExchangeGovernanceCredential``, every contract negotiation fails its ODRL
+policy checks — the connectors come up healthy and the negotiation simply never
+reaches AGREED.
 This script is that Bruno collection, executed non-interactively:
 
   1. create the issuer's participant context (super-user credentials)
   2. register the ``holder`` attestation, which reads a holder's own properties
-  3. define the four credential types those properties can satisfy
-  4. register both participants as holders, carrying those properties
-  5. ask each participant's IdentityHub to request those credentials
+  3. define the credential types those properties can satisfy
+  4. register every participant as a holder, carrying those properties
+  5. ask each participant's IdentityHub to request its credentials
   6. poll each IdentityHub until the credentials are actually held
 
-Every identifier here is fixed by
-``charts/umbrella/values-adopter-decentralized-identityhub.yaml`` (DIDs, BPNs,
-IdentityHub API keys), which the workflow pins by chart version — so they are
-constants, not configuration. Only the IssuerService super-user API key is
-generated at runtime; it is read from the IssuerService log by the workflow and
-passed in with ``--super-user-key``.
+The participants, their DIDs, BPNs, claims and IdentityHub API keys, the
+credential types and the issuer's DID all come from the plan
+scripts/render_toolbox.py wrote from the toolbox configuration (``--plan``).
+Only the IssuerService super-user API key is generated at runtime; it is read
+from the IssuerService log by the action and passed in with
+``--super-user-key``.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import pathlib
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 
-# The IssuerService's own participant context. `did` must match the
-# `trustedIssuers` entry both connectors are configured with; `context_id` is
-# an opaque local handle that goes into the admin API's URLs as-is. (EDC
-# IdentityHub 0.17.0, which the 0.4.0 images are built on, dropped the base64
-# encoding every participant-scoped URL used to carry; an encoded id is looked
-# up verbatim and comes back as a 404.)
-ISSUER_DID = "did:web:issuerservice.local:BPNL000000000003"
+# The IssuerService's own participant context. Its DID must match the
+# `trustedIssuers` entry every connector is configured with, and comes from the
+# plan; `context_id` is an opaque local handle that goes into the admin API's
+# URLs as-is. (EDC IdentityHub 0.17.0, which the 0.4.0 images are built on,
+# dropped the base64 encoding every participant-scoped URL used to carry; an
+# encoded id is looked up verbatim and comes back as a 404.)
 ISSUER_CONTEXT_ID = "issuer"
 ISSUER_PRIVATE_KEY_ALIAS = "issuer-privatekey-alias"
 
@@ -84,6 +88,7 @@ ATTESTATION_ID = "attestation-id"
 CREDENTIAL_FORMAT = "VC1_0_JWT"
 CREDENTIAL_VALIDITY = 10_000_000_000_000
 
+# Every credential names its holder by DID and by BPN.
 _HOLDER_ID = {"input": "holder_id", "output": "credentialSubject.id", "required": True}
 _HOLDER_IDENTIFIER = {
     "input": "bpn",
@@ -92,59 +97,35 @@ _HOLDER_IDENTIFIER = {
 }
 
 
-def _mapping(input_claim: str, output_claim: str) -> dict:
-    return {"input": input_claim, "output": output_claim, "required": True}
+@dataclass(frozen=True)
+class CredentialDefinition:
+    """A credential type the IssuerService issues.
 
+    A mapping's `input` names a key of the claim map the attestation produced,
+    which for the `holder` attestation is a key of `Participant.claims`.
+    """
 
-# id -> (credentialType, extra claim mappings beyond holder id/identifier).
-# A mapping's `input` names a key of the claim map the attestation produced,
-# which for the `holder` attestation is a key of `Participant.claims` below.
-CREDENTIAL_DEFINITIONS: dict[str, tuple[str, list[dict]]] = {
-    "membershipCredential-id": (
-        "MembershipCredential",
-        [_mapping("member_of", "credentialSubject.memberOf")],
-    ),
-    "BpnCredential-id": (
-        "BpnCredential",
-        [_mapping("bpn", "credentialSubject.bpn")],
-    ),
-    "usagePurposeCredential-id": ("UsagePurposeCredential", []),
-    "dataExchangeGovernanceCredential-id": (
-        "DataExchangeGovernanceCredential",
-        [
-            _mapping("group_name", "credentialSubject.group"),
-            _mapping("use_case", "credentialSubject.useCase"),
-            _mapping("contract_template", "credentialSubject.contractTemplate"),
-            _mapping("contract_version", "credentialSubject.contractVersion"),
-        ],
-    ),
-}
-
-
-# The claims every participant is attested with, minus the two that are the
-# participant's own identity. Values are Umbrella's: they are the columns
-# `attestationClaimSeeding` writes into `custom_attestation_claims`, which is
-# what the profile's credential definitions were written against.
-COMMON_CLAIMS = {
-    "member_of": "Catena-X",
-    "group_name": "UseCaseFramework",
-    "use_case": "DataExchangeGovernance",
-    "contract_template": "https://example.org/temp-1",
-    "contract_version": "1.0",
-}
+    id: str
+    type: str
+    mappings: list[dict] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class Participant:
-    """A dataspace participant that must end up holding the credentials."""
+    """A dataspace participant that must end up holding its credentials."""
 
     name: str
     did: str
     # The IdentityHub's private "identity" API, exposed on `<name>.intranet`.
     identity_api: str
-    # `identityhub.iatp.sts.oauth.client.x_api_key` from the profile.
+    # `identityhub.iatp.sts.oauth.client.x_api_key` of the participant.
     api_key: str
     bpn: str
+    # What the `holder` attestation will hand the issuance rules: the holder
+    # record carries the claims itself, so what a credential definition can map
+    # is exactly what is written here.
+    claims: dict
+    credentials: tuple[str, ...]
 
     @property
     def context_id(self) -> str:
@@ -154,45 +135,41 @@ class Participant:
         """
         return self.did
 
-    @property
-    def claims(self) -> dict:
-        """What the `holder` attestation will hand the issuance rules.
 
-        The holder record carries the claims itself, so what a credential
-        definition can map is exactly what is written here.
-        """
-        return {
-            "holder_id": self.did,
-            "holder_identifier": self.did,
-            "bpn": self.bpn,
-            **COMMON_CLAIMS,
-        }
+@dataclass(frozen=True)
+class Plan:
+    issuer_did: str
+    definitions: tuple[CredentialDefinition, ...]
+    participants: tuple[Participant, ...]
+
+    def wanted(self, participant: Participant) -> list[CredentialDefinition]:
+        return [definition for definition in self.definitions if definition.type in participant.credentials]
 
 
-PARTICIPANTS = (
-    Participant(
-        name="provider",
-        did="did:web:provider.local:identityhub:BPNL000000000001",
-        identity_api="http://provider.intranet/identityhub/api/identity/v1alpha",
-        api_key=(
-            "ZGlkOndlYjpwcm92aWRlci5sb2NhbDppZGVudGl0eWh1YjpCUE5MMDAwMDAwMDAwMDAx.randomChars"
+def load_plan(path: pathlib.Path) -> Plan:
+    plan = json.loads(path.read_text())
+    return Plan(
+        issuer_did=plan["issuer"]["did"],
+        definitions=tuple(
+            CredentialDefinition(definition["id"], definition["type"], definition["mappings"])
+            for definition in plan["credential_definitions"]
         ),
-        bpn="BPNL000000000001",
-    ),
-    Participant(
-        name="consumer",
-        did="did:web:consumer.local:identityhub:BPNL000000000002",
-        identity_api="http://consumer.intranet/identityhub/api/identity/v1alpha",
-        api_key=(
-            "ZGlkOndlYjpjb25zdW1lci5sb2NhbDppZGVudGl0eWh1YjpCUE5MMDAwMDAwMDAwMDAy.randomChars"
+        participants=tuple(
+            Participant(
+                name=participant["name"],
+                did=participant["did"],
+                identity_api=participant["identity_api"],
+                api_key=participant["x_api_key"],
+                bpn=participant["bpn"],
+                claims=participant["claims"],
+                credentials=tuple(participant["credentials"]),
+            )
+            # Only the wallets this toolbox runs; an external participant's is
+            # not ours to fill.
+            for participant in plan["participants"]
+            if participant["deployed"]
         ),
-        bpn="BPNL000000000002",
-    ),
-)
-
-EXPECTED_CREDENTIAL_TYPES = frozenset(
-    credential_type for credential_type, _ in CREDENTIAL_DEFINITIONS.values()
-)
+    )
 
 
 class IssuanceError(RuntimeError):
@@ -229,14 +206,16 @@ def _post(
     return response
 
 
-def _create_issuer_context(client: httpx.Client, issuer_url: str, super_user_key: str) -> str:
+def _create_issuer_context(
+    client: httpx.Client, issuer_url: str, super_user_key: str, issuer_did: str
+) -> str:
     """Create the issuer's participant context and return its API key."""
     payload = {
         "active": True,
-        "did": ISSUER_DID,
+        "did": issuer_did,
         "key": {
             "keyGeneratorParams": {"algorithm": "Ec", "curve": "secp256r1"},
-            "keyId": f"{ISSUER_DID}#key-1",
+            "keyId": f"{issuer_did}#key-1",
             "type": "JsonWebKey2020",
             "privateKeyAlias": ISSUER_PRIVATE_KEY_ALIAS,
         },
@@ -275,7 +254,7 @@ def _create_issuer_context(client: httpx.Client, issuer_url: str, super_user_key
     return api_key
 
 
-def _seed_issuer(client: httpx.Client, issuer_url: str, issuer_key: str) -> None:
+def _seed_issuer(client: httpx.Client, issuer_url: str, issuer_key: str, plan: Plan) -> None:
     """Register the attestation, credential definitions and holders."""
     admin = f"{issuer_url}/api/admin/v1alpha/participants/{ISSUER_CONTEXT_ID}"
 
@@ -291,25 +270,25 @@ def _seed_issuer(client: httpx.Client, issuer_url: str, issuer_key: str) -> None
         description=f"attestation '{ATTESTATION_ID}'",
     )
 
-    for definition_id, (credential_type, extra_mappings) in CREDENTIAL_DEFINITIONS.items():
+    for definition in plan.definitions:
         _post(
             client,
             f"{admin}/credentialdefinitions",
             api_key=issuer_key,
             payload={
                 "attestations": [ATTESTATION_ID],
-                "credentialType": credential_type,
+                "credentialType": definition.type,
                 "format": CREDENTIAL_FORMAT,
-                "id": definition_id,
+                "id": definition.id,
                 "jsonSchema": "{}",
                 "jsonSchemaUrl": "test",
-                "mappings": [_HOLDER_ID, _HOLDER_IDENTIFIER, *extra_mappings],
+                "mappings": [_HOLDER_ID, _HOLDER_IDENTIFIER, *definition.mappings],
                 "validity": CREDENTIAL_VALIDITY,
             },
-            description=f"credential definition '{credential_type}'",
+            description=f"credential definition '{definition.type}'",
         )
 
-    for participant in PARTICIPANTS:
+    for participant in plan.participants:
         _post(
             client,
             f"{admin}/holders",
@@ -325,20 +304,23 @@ def _seed_issuer(client: httpx.Client, issuer_url: str, issuer_key: str) -> None
         )
 
 
-def _request_credentials(client: httpx.Client, participant: Participant) -> None:
+def _request_credentials(client: httpx.Client, participant: Participant, plan: Plan) -> None:
     """Have a participant's IdentityHub request its credentials from the issuer."""
     credentials = [
-        {"format": CREDENTIAL_FORMAT, "id": definition_id, "type": credential_type}
-        for definition_id, (credential_type, _) in CREDENTIAL_DEFINITIONS.items()
+        {"format": CREDENTIAL_FORMAT, "id": definition.id, "type": definition.type}
+        for definition in plan.wanted(participant)
     ]
+    if not credentials:
+        _log(f"  {participant.name}: asks for no credentials")
+        return
     _post(
         client,
         f"{participant.identity_api}/participants/{participant.context_id}/credentials/request",
         api_key=participant.api_key,
         payload={
             "credentials": credentials,
-            "holderPid": ISSUER_DID,
-            "issuerDid": ISSUER_DID,
+            "holderPid": plan.issuer_did,
+            "issuerDid": plan.issuer_did,
         },
         description=f"{participant.name} credential request",
     )
@@ -361,10 +343,14 @@ def _held_credential_types(client: httpx.Client, participant: Participant) -> se
     return held
 
 
-def _await_credentials(client: httpx.Client, timeout: float, interval: float) -> None:
-    """Poll both IdentityHubs until every expected credential is held."""
+def _await_credentials(client: httpx.Client, plan: Plan, timeout: float, interval: float) -> None:
+    """Poll every IdentityHub until each participant holds what it asked for."""
     deadline = time.monotonic() + timeout
-    outstanding = {participant.name: participant for participant in PARTICIPANTS}
+    expected = {
+        participant.name: {definition.type for definition in plan.wanted(participant)}
+        for participant in plan.participants
+    }
+    outstanding = {participant.name: participant for participant in plan.participants if expected[participant.name]}
     last_seen: dict[str, set[str]] = {}
 
     while outstanding and time.monotonic() < deadline:
@@ -375,11 +361,11 @@ def _await_credentials(client: httpx.Client, timeout: float, interval: float) ->
                 _log(f"  {name}: IdentityHub not answering yet ({error})")
                 continue
             last_seen[name] = held
-            if held >= EXPECTED_CREDENTIAL_TYPES:
-                _log(f"  {name}: holds {', '.join(sorted(EXPECTED_CREDENTIAL_TYPES))}")
+            if held >= expected[name]:
+                _log(f"  {name}: holds {', '.join(sorted(expected[name]))}")
                 del outstanding[name]
             else:
-                missing = ", ".join(sorted(EXPECTED_CREDENTIAL_TYPES - held))
+                missing = ", ".join(sorted(expected[name] - held))
                 _log(f"  {name}: waiting for {missing}")
         if outstanding:
             time.sleep(interval)
@@ -401,6 +387,12 @@ def _await_credentials(client: httpx.Client, timeout: float, interval: float) ->
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--plan",
+        required=True,
+        type=pathlib.Path,
+        help="plan.json written by render_toolbox.py.",
+    )
+    parser.add_argument(
         "--issuer-url",
         default="http://issuerservice.local",
         help="Base URL of the IssuerService ingress.",
@@ -417,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         "--timeout",
         type=float,
         default=300.0,
-        help="Seconds to wait for issuance to complete on both IdentityHubs.",
+        help="Seconds to wait for issuance to complete on every IdentityHub.",
     )
     parser.add_argument(
         "--poll-interval",
@@ -428,26 +420,29 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     issuer_url = arguments.issuer_url.rstrip("/")
+    plan = load_plan(arguments.plan)
 
     try:
         with httpx.Client(timeout=30.0, follow_redirects=True) as client:
             _log(f"Creating the issuer's participant context on {issuer_url}")
-            issuer_key = _create_issuer_context(client, issuer_url, arguments.super_user_key)
+            issuer_key = _create_issuer_context(
+                client, issuer_url, arguments.super_user_key, plan.issuer_did
+            )
 
             _log("Registering the attestation, credential definitions and holders")
-            _seed_issuer(client, issuer_url, issuer_key)
+            _seed_issuer(client, issuer_url, issuer_key, plan)
 
             _log("Requesting credentials from each participant's IdentityHub")
-            for participant in PARTICIPANTS:
-                _request_credentials(client, participant)
+            for participant in plan.participants:
+                _request_credentials(client, participant, plan)
 
-            _log("Waiting for the credentials to land in both IdentityHubs")
-            _await_credentials(client, arguments.timeout, arguments.poll_interval)
+            _log(f"Waiting for the credentials to land in {len(plan.participants)} IdentityHubs")
+            _await_credentials(client, plan, arguments.timeout, arguments.poll_interval)
     except (IssuanceError, httpx.HTTPError) as error:
         print(f"::error::{error}", file=sys.stderr, flush=True)
         return 1
 
-    _log("Both participants hold the Catena-X credentials the TCK's policies require.")
+    _log("Every participant holds the credentials it asked for.")
     return 0
 
 

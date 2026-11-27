@@ -45,6 +45,10 @@ runs:
       run: |
         mkdir -p "${OUT}"
         helm status umbrella -n "${UMBRELLA_NAMESPACE}" > "${OUT}/helm-status.txt" 2>&1 || true
+        # Every release, the applications from the toolbox configuration included.
+        helm list --all-namespaces --all > "${OUT}/helm-releases.txt" 2>&1 || true
+        kubectl get pods --all-namespaces -o wide > "${OUT}/pods-all-namespaces.txt" 2>&1 || true
+        cp "${RUNNER_TEMP}/developer-toolbox/plan.json" "${OUT}/plan.json" 2>/dev/null || true
         kubectl get all -n "${UMBRELLA_NAMESPACE}" -o wide > "${OUT}/resources.txt" 2>&1 || true
         kubectl get nodes -o wide > "${OUT}/nodes.txt" 2>&1 || true
         kubectl describe nodes > "${OUT}/nodes-describe.txt" 2>&1 || true

@@ -1,0 +1,135 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# The developer toolbox's default configuration: what you get when you pass no
+# `config` to the action. Copy it into your repository, change what you need
+# and pass its path as `config`. Every key is optional: a key you leave out
+# takes the value below. The reference is in README.md.
+
+# The dataspace software and its versions.
+dataspace:
+  umbrella:
+    # The Tractus-X Umbrella chart the dataspace is deployed from.
+    chart-version: "26.03.00"
+    # Tag of eclipse-tractusx/tractus-x-umbrella the decentralized-IdentityHub
+    # profile is read from. Keep it on the chart version.
+    profile-ref: "umbrella-26.03.00"
+  identityhub:
+    # IdentityHub and IssuerService chart release.
+    chart-version: "v0.4.0"
+    # The `main` build, not the 0.4.0 release: the release cannot run in-memory
+    # (tractusx-identityhub#347 is on `main` and in no release yet). A moving
+    # tag, so it is always pulled. Go back to the chart default (tag: "") at the
+    # first release past 0.4.0.
+    image:
+      tag: "0.4.0-SNAPSHOT"
+      pull-policy: Always
+  issuerservice:
+    image:
+      repository: tractusx/issuerservice-memory
+      tag: "0.4.0-SNAPSHOT"
+      pull-policy: Always
+  connector:
+    # The Tractus-X EDC runtime every deployed connector runs. An empty tag is
+    # the connector chart's own appVersion.
+    image:
+      repository: tractusx/edc-runtime-memory
+      tag: ""
+    # The DSP version path the connectors are addressed on (`<dsp>/2025-1`).
+    dsp-version: "2025-1"
+  # The IssuerService's own identity. Its DID is did:web:issuerservice.local:<bpn>.
+  issuer:
+    bpn: BPNL000000000003
+
+# The credentials the IssuerService can issue, by credential type. Every
+# definition maps the holder's DID and BPN; `mappings` adds the claims it also
+# carries, as <claim>: <credential path>. A participant gets the credentials it
+# lists in `credentials`, with the `claims` below (and its own).
+credentials:
+  MembershipCredential:
+    mappings:
+      member_of: credentialSubject.memberOf
+  BpnCredential:
+    mappings:
+      bpn: credentialSubject.bpn
+  UsagePurposeCredential: {}
+  DataExchangeGovernanceCredential:
+    mappings:
+      group_name: credentialSubject.group
+      use_case: credentialSubject.useCase
+      contract_template: credentialSubject.contractTemplate
+      contract_version: credentialSubject.contractVersion
+
+# The claims every participant is attested with. A participant's own `claims`
+# are merged over these.
+claims:
+  member_of: Catena-X
+  group_name: UseCaseFramework
+  use_case: DataExchangeGovernance
+  contract_template: https://example.org/temp-1
+  contract_version: "1.0"
+
+# The participants. Each one gets a wallet (IdentityHub), an entry in the BPN
+# directory (BDRS) and its credentials; `connector` and `dtr` decide what else
+# it runs. Add as many as the runner can hold.
+participants:
+  - name: provider
+    bpn: BPNL000000000001
+    # did: did:web:provider.local:identityhub:BPNL000000000001   (the default)
+    connector: true
+    dtr: true
+  - name: consumer
+    bpn: BPNL000000000002
+    connector: true
+    dtr: false
+
+# Stand-ins for a product, deployed next to the dataspace.
+stand-ins:
+  # An echo backend behind the provider's connector (product_internal_url).
+  echo: true
+  # A system under test that calls back when told to (stub_caller_url).
+  stub-caller: true
+  # A payload store for submodels (infrastructure.engine.dtr.submodel_base_url).
+  submodel-server: true
+
+# Your own Helm charts, deployed after the dataspace. For example the chart of
+# the product your pull request builds:
+#
+# applications:
+#   - name: my-product
+#     chart: ./charts/my-product        # a path in your checkout, or a chart name
+#     repository: ""                    # a Helm repository URL, for a chart name
+#     version: ""                       # the chart version, from a repository
+#     values: [ci/my-product.values.yaml]
+#     set:
+#       image.tag: pr-123
+#     images: [my-product:pr-123]       # images built in the job, loaded into kind
+#     hosts: [my-product.local]         # resolvable from the runner and from pods
+applications: []
+
+# TestLab, the test engine that runs the TCKs against the dataspace.
+testlab:
+  # tractusx-testlab on PyPI. The action installs it, so `testlab` is on the
+  # PATH of the steps after it. Empty: do not install it.
+  version: "1.0.0a24"
+  # The participant under test and the one TestLab drives. Their connectors
+  # become `infrastructure.sut.*` and `infrastructure.engine.*` in the
+  # variables file.
+  sut: provider
+  engine: consumer

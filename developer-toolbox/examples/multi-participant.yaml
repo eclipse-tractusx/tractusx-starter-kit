@@ -1,0 +1,77 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# A larger dataspace: four connectors, two of them with a Digital Twin
+# Registry, a participant that only holds an identity, and a partner whose
+# connector runs somewhere else. Only the keys that differ from toolbox.yaml
+# are here.
+#
+# Every connector is three JVMs (control plane, data plane, IdentityHub), so
+# this needs more than the 4 vCPUs of `ubuntu-latest`: run it on a larger
+# runner, for example 8 vCPUs and 32 GB.
+
+credentials:
+  # A credential of your own, next to the four Catena-X ones.
+  QualityCredential:
+    mappings:
+      quality_level: credentialSubject.qualityLevel
+
+participants:
+  - name: provider
+    bpn: BPNL000000000001
+    dtr: true
+  - name: consumer
+    bpn: BPNL000000000002
+  - name: supplier
+    bpn: BPNL0000000000AA
+    did: did:web:supplier.local:identityhub:BPNL0000000000AA
+    dtr: true
+    credentials:
+      - MembershipCredential
+      - BpnCredential
+      - DataExchangeGovernanceCredential
+      - QualityCredential
+    claims:
+      quality_level: gold
+  - name: recycler
+    bpn: BPNL0000000000BB
+    connector:
+      api-key: recycler-key
+    # No DataExchangeGovernanceCredential: negotiations that require it fail.
+    credentials: [MembershipCredential, BpnCredential]
+  - name: auditor
+    bpn: BPNL0000000000CC
+    # A wallet and credentials, no connector.
+    connector: false
+  - name: partner
+    bpn: BPNL0000000000DD
+    did: did:web:partner.example.com
+    # Runs nothing here: only its BPN and DID go into the directory, and its
+    # URLs into the variables file.
+    external:
+      dsp-url: https://partner.example.com/api/v1/dsp/2025-1
+      management-url: https://partner.example.com/management
+      api-key: partner-key
+
+stand-ins:
+  stub-caller: false
+
+testlab:
+  sut: supplier
+  engine: consumer

@@ -18,34 +18,47 @@
 #################################################################################
 
 # Eclipse Tractus-X developer toolbox: a small dataspace inside the GitHub
-# runner. A kind cluster with two connectors, two wallets (IdentityHub), a
-# Digital Twin Registry, a BDRS and an IssuerService, deployed from the pinned
-# Tractus-X Umbrella chart. It issues the participants' Catena-X credentials,
-# deploys an echo backend, a stub caller and a submodel server, and checks that
-# everything answers before it returns.
+# runner. A kind cluster with the participants a YAML configuration names --
+# each one a wallet (IdentityHub) and, as configured, a connector and a Digital
+# Twin Registry -- plus a BDRS and an IssuerService, deployed from the pinned
+# Tractus-X Umbrella chart. It issues each participant's credentials, deploys
+# the stand-in services and the caller's own charts, and checks that everything
+# answers before it returns.
 #
 #   steps:
 #     - uses: actions/checkout@v4
 #     - uses: eclipse-tractusx/tractusx-starter-kit/developer-toolbox@main
 #       id: toolbox
+#       with:
+#         config: ci/toolbox.yaml        # optional; toolbox.yaml is the default
 #     - run: testlab run my.tck --config "${{ steps.toolbox.outputs.variables-file }}"
-#     - if: always()
+#     - if: failure() || cancelled()
 #       uses: eclipse-tractusx/tractusx-starter-kit/developer-toolbox/diagnostics@main
 #
-# The bring-up was moved here from the reusable E2E workflow in
-# eclipse-tractusx/tutorial-resources, which took it from TestLab's own E2E
+# The configuration is described in README.md; toolbox.yaml is the default
+# and the reference. The bring-up was moved here from the reusable E2E workflow
+# in eclipse-tractusx/tutorial-resources, which took it from TestLab's own E2E
 # workflow:
 #   https://github.com/eclipse-tractusx/tractusx-testlab/blob/e75ebb96ee3793fab2372213868df3296094da1c/.github/workflows/e2e-umbrella.yml
-# The helper scripts (scripts/) and Helm values (values/) come from that same
-# TestLab commit.
 
 name: Eclipse Tractus-X developer toolbox
 description: >-
-  Create a small Tractus-X dataspace in the runner (kind + pinned Umbrella chart):
-  two connectors with wallets, an IssuerService, a BDRS and a Digital Twin
-  Registry, with credentials issued and reachability checked.
+  Create a Tractus-X dataspace in the runner (kind + pinned Umbrella chart) from
+  a YAML configuration: any number of participants with wallets, connectors and
+  Digital Twin Registries, an IssuerService and a BDRS, with credentials issued,
+  your own charts deployed and reachability checked.
 
 inputs:
+  config:
+    description: >-
+      Path to a developer toolbox configuration (YAML), merged over the
+      default toolbox.yaml. Empty: the default, two connectors and one DTR.
+    default: ""
+  render-only:
+    description: >-
+      "true" to stop after reading the configuration and validating the
+      rendered manifest (and installing TestLab): no cluster is created.
+    default: "false"
   namespace:
     description: Kubernetes namespace of the Umbrella release.
     default: umbrella
@@ -53,14 +66,23 @@ inputs:
     description: Name of the kind cluster.
     default: tck-e2e
   umbrella-chart-version:
-    description: Version of the Tractus-X Umbrella chart.
-    default: "26.03.00"
+    description: Version of the Tractus-X Umbrella chart. Overrides `dataspace.umbrella.chart-version`.
+    default: ""
   umbrella-values-ref:
-    description: Tag of eclipse-tractusx/tractus-x-umbrella the decentralized-IdentityHub profile is read from.
-    default: "umbrella-26.03.00"
+    description: >-
+      Tag of eclipse-tractusx/tractus-x-umbrella the decentralized-IdentityHub
+      profile is read from. Overrides `dataspace.umbrella.profile-ref`.
+    default: ""
   identityhub-chart-version:
-    description: IdentityHub and IssuerService chart release (the IdentityHub repository tags each chart on its own).
-    default: "v0.4.0"
+    description: >-
+      IdentityHub and IssuerService chart release (the IdentityHub repository
+      tags each chart on its own). Overrides `dataspace.identityhub.chart-version`.
+    default: ""
+  testlab-version:
+    description: >-
+      tractusx-testlab version to install from PyPI. Overrides `testlab.version`;
+      "none" installs nothing.
+    default: ""
   kind-version:
     description: Version of kind.
     default: "v0.24.0"
@@ -77,7 +99,7 @@ inputs:
     description: How long helm install waits for the release to be ready.
     default: "25m"
   extra-values:
-    description: Optional extra Helm values file, applied last. Use it to deploy the image built from a pull request.
+    description: Optional extra Helm values file for the Umbrella release, applied last.
     default: ""
   mock-server-port:
     description: Port on the runner that pods reach the test engine's mock server on.
@@ -87,82 +109,49 @@ outputs:
   variables-file:
     description: A YAML file with "variables:" for the dataspace (fixed values plus the URLs discovered at run time), ready for `testlab run --config`.
     value: ${{ steps.variables.outputs.variables-file }}
+  participants-file:
+    description: A JSON file with every participant, its DID, BPN, credentials and the URLs it answers on.
+    value: ${{ steps.variables.outputs.participants-file }}
+  plan-file:
+    description: The resolved configuration (JSON) the toolbox deployed.
+    value: ${{ steps.config.outputs.plan-file }}
   namespace:
     description: Kubernetes namespace of the Umbrella release.
     value: ${{ inputs.namespace }}
   cluster-name:
     description: Name of the kind cluster.
     value: ${{ inputs.cluster-name }}
+  umbrella-chart-version:
+    description: The Umbrella chart version deployed.
+    value: ${{ steps.config.outputs.umbrella-chart-version }}
+  identityhub-chart-version:
+    description: The IdentityHub and IssuerService chart release deployed.
+    value: ${{ steps.config.outputs.identityhub-chart-version }}
+  testlab-version:
+    description: The tractusx-testlab version installed, or empty.
+    value: ${{ steps.config.outputs.testlab-version }}
   dtr-base-url:
-    description: Digital Twin Registry, as the runner reaches it.
+    description: The Digital Twin Registry under test (the SUT's, or the first one), as the runner reaches it.
     value: ${{ steps.variables.outputs.dtr-base-url }}
   dtr-internal-url:
-    description: Digital Twin Registry API, as a pod reaches it.
+    description: The same Digital Twin Registry API, as a pod reaches it.
     value: ${{ steps.variables.outputs.dtr-internal-url }}
   mock-server-external-url:
     description: The runner's mock server, as a pod reaches it.
     value: ${{ steps.variables.outputs.mock-server-external-url }}
   stub-caller-url:
-    description: The stub caller, as the runner reaches it.
+    description: The stub caller, as the runner reaches it (empty when switched off).
     value: ${{ steps.variables.outputs.stub-caller-url }}
   submodel-server-url:
-    description: The submodel server, from the runner and from pods.
+    description: The submodel server, from the runner and from pods (empty when switched off).
     value: ${{ steps.variables.outputs.submodel-server-url }}
   product-internal-url:
-    description: The echo backend that stands in for a product behind the provider's connector.
+    description: The echo backend that stands in for a product behind the provider's connector (empty when switched off).
     value: ${{ steps.variables.outputs.product-internal-url }}
 
 runs:
   using: composite
   steps:
-    - name: Configure the developer toolbox
-      shell: bash
-      env:
-        TOOLBOX_DIR: ${{ github.action_path }}
-        INPUT_NAMESPACE: ${{ inputs.namespace }}
-        INPUT_CLUSTER: ${{ inputs.cluster-name }}
-        INPUT_UMBRELLA_CHART_VERSION: ${{ inputs.umbrella-chart-version }}
-        INPUT_UMBRELLA_VALUES_REF: ${{ inputs.umbrella-values-ref }}
-        INPUT_IDENTITYHUB_CHART_VERSION: ${{ inputs.identityhub-chart-version }}
-        INPUT_KIND_VERSION: ${{ inputs.kind-version }}
-        INPUT_KIND_NODE_IMAGE: ${{ inputs.kind-node-image }}
-        INPUT_HELM_TIMEOUT: ${{ inputs.helm-timeout }}
-        INPUT_EXTRA_VALUES: ${{ inputs.extra-values }}
-        INPUT_MOCK_SERVER_PORT: ${{ inputs.mock-server-port }}
-      run: |
-        set -euo pipefail
-        # A composite action has no job-level env, so the settings every later
-        # step reads go to GITHUB_ENV once, here.
-        extra=""
-        if [ -n "${INPUT_EXTRA_VALUES}" ]; then
-          extra="$(realpath "${INPUT_EXTRA_VALUES}")"
-        fi
-        {
-          echo "TOOLBOX_DIR=${TOOLBOX_DIR}"
-          echo "TOOLBOX_CLUSTER=${INPUT_CLUSTER}"
-          echo "UMBRELLA_NAMESPACE=${INPUT_NAMESPACE}"
-          echo "UMBRELLA_CHART_VERSION=${INPUT_UMBRELLA_CHART_VERSION}"
-          echo "UMBRELLA_VALUES_REF=${INPUT_UMBRELLA_VALUES_REF}"
-          echo "IDENTITYHUB_CHART_VERSION=${INPUT_IDENTITYHUB_CHART_VERSION}"
-          echo "KIND_VERSION=${INPUT_KIND_VERSION}"
-          echo "KIND_NODE_IMAGE=${INPUT_KIND_NODE_IMAGE}"
-          echo "HELM_TIMEOUT=${INPUT_HELM_TIMEOUT}"
-          echo "UMBRELLA_EXTRA_VALUES=${extra}"
-          echo "MOCK_SERVER_PORT=${INPUT_MOCK_SERVER_PORT}"
-          echo "TCK_CONFIG=${TOOLBOX_DIR}/values/umbrella.vars.yaml"
-          echo "UMBRELLA_CI_VALUES=${TOOLBOX_DIR}/values/umbrella.values.yaml"
-          echo "ISSUANCE_SCRIPT=${TOOLBOX_DIR}/scripts/issue_credentials.py"
-          echo "STUB_CALLER_SCRIPT=${TOOLBOX_DIR}/scripts/stub_caller.py"
-          echo "STUB_CALLER_URL=http://tck-stub.local"
-          echo "SUBMODEL_SERVER_SCRIPT=${TOOLBOX_DIR}/scripts/submodel_server.py"
-          echo "SUBMODEL_SERVER_URL=http://tck-submodel.local"
-          echo "PROBE_SCRIPT=${TOOLBOX_DIR}/scripts/probe_from_pod.sh"
-          echo "WEDGE_SCRIPT=${TOOLBOX_DIR}/scripts/restart_wedged_runtimes.py"
-          # Single source of truth for the dataspace hostnames, used for both
-          # the runner's /etc/hosts and the cluster's CoreDNS.
-          printf 'DATASPACE_HOSTS=%s\n' "$(tr '\n' ' ' < "${TOOLBOX_DIR}/values/hosts.txt" | sed 's/ *$//')"
-        } >> "${GITHUB_ENV}"
-
     - name: Set up Python 3.12
       uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
@@ -173,9 +162,168 @@ runs:
       run: python -m pip install --quiet "httpx>=0.27,<1" "pyyaml>=6,<7"
 
     # ------------------------------------------------------------------
-    # 1. Ephemeral Kubernetes cluster and its DNS
+    # 1. Read the configuration and check what it renders, before any
+    #    cluster exists
+    # ------------------------------------------------------------------
+    - name: Read the developer toolbox configuration
+      id: config
+      shell: bash
+      env:
+        TOOLBOX_DIR: ${{ github.action_path }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_NAMESPACE: ${{ inputs.namespace }}
+        INPUT_CLUSTER: ${{ inputs.cluster-name }}
+        INPUT_UMBRELLA_CHART_VERSION: ${{ inputs.umbrella-chart-version }}
+        INPUT_UMBRELLA_VALUES_REF: ${{ inputs.umbrella-values-ref }}
+        INPUT_IDENTITYHUB_CHART_VERSION: ${{ inputs.identityhub-chart-version }}
+        INPUT_TESTLAB_VERSION: ${{ inputs.testlab-version }}
+        INPUT_KIND_VERSION: ${{ inputs.kind-version }}
+        INPUT_KIND_NODE_IMAGE: ${{ inputs.kind-node-image }}
+        INPUT_HELM_TIMEOUT: ${{ inputs.helm-timeout }}
+        INPUT_EXTRA_VALUES: ${{ inputs.extra-values }}
+        INPUT_MOCK_SERVER_PORT: ${{ inputs.mock-server-port }}
+      run: |
+        set -euo pipefail
+        out="${RUNNER_TEMP}/developer-toolbox"
+        mkdir -p "${out}"
+
+        config=()
+        if [ -n "${INPUT_CONFIG}" ]; then
+          config=(--config "$(realpath "${INPUT_CONFIG}")")
+        fi
+        # One EDR signing keypair for the run, never committed: the data plane
+        # signs the token the consumer presents at the public API and verifies
+        # it when the token comes back. render_toolbox.py seeds it into every
+        # connector's in-memory vault.
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${out}/signing.key" 2>/dev/null
+        openssl pkey -in "${out}/signing.key" -pubout -out "${out}/signing.pub"
+
+        python "${TOOLBOX_DIR}/scripts/render_toolbox.py" "${config[@]}" \
+          --out-dir "${out}" \
+          --namespace "${INPUT_NAMESPACE}" \
+          --workspace "${GITHUB_WORKSPACE}" \
+          --umbrella-chart-version "${INPUT_UMBRELLA_CHART_VERSION}" \
+          --umbrella-values-ref "${INPUT_UMBRELLA_VALUES_REF}" \
+          --identityhub-chart-version "${INPUT_IDENTITYHUB_CHART_VERSION}" \
+          --testlab-version "${INPUT_TESTLAB_VERSION}" \
+          --signing-key "${out}/signing.key" \
+          --signing-public-key "${out}/signing.pub"
+        rm -f "${out}/signing.key"
+
+        extra=""
+        if [ -n "${INPUT_EXTRA_VALUES}" ]; then
+          extra="$(realpath "${INPUT_EXTRA_VALUES}")"
+        fi
+        # A composite action has no job-level env, so the settings every later
+        # step reads go to GITHUB_ENV once, here.
+        {
+          echo "TOOLBOX_DIR=${TOOLBOX_DIR}"
+          echo "TOOLBOX_OUT=${out}"
+          echo "TOOLBOX_PLAN=${out}/plan.json"
+          echo "TOOLBOX_CLUSTER=${INPUT_CLUSTER}"
+          echo "UMBRELLA_NAMESPACE=${INPUT_NAMESPACE}"
+          echo "KIND_VERSION=${INPUT_KIND_VERSION}"
+          echo "KIND_NODE_IMAGE=${INPUT_KIND_NODE_IMAGE}"
+          echo "HELM_TIMEOUT=${INPUT_HELM_TIMEOUT}"
+          echo "UMBRELLA_EXTRA_VALUES=${extra}"
+          echo "MOCK_SERVER_PORT=${INPUT_MOCK_SERVER_PORT}"
+          echo "UMBRELLA_CI_VALUES=${TOOLBOX_DIR}/values/umbrella.values.yaml"
+          cat "${out}/toolbox.env"
+          # Single source of truth for the dataspace hostnames, used for both
+          # the runner's /etc/hosts and the cluster's CoreDNS.
+          printf 'DATASPACE_HOSTS=%s\n' "$(tr '\n' ' ' < "${out}/hosts.txt" | sed 's/ *$//')"
+        } >> "${GITHUB_ENV}"
+
+        python - "${out}/plan.json" >> "${GITHUB_OUTPUT}" <<'PY'
+        import json
+        import sys
+
+        plan = json.load(open(sys.argv[1], encoding="utf-8"))
+        stand_ins = plan["stand_ins"]
+        print(f"plan-file={sys.argv[1]}")
+        print(f"echo={str(stand_ins['echo']).lower()}")
+        print(f"stub-caller={str(stand_ins['stub_caller']).lower()}")
+        print(f"submodel-server={str(stand_ins['submodel_server']).lower()}")
+        print(f"applications={str(bool(plan['applications'])).lower()}")
+        print(f"umbrella-chart-version={plan['versions']['umbrella_chart']}")
+        print(f"identityhub-chart-version={plan['versions']['identityhub_chart']}")
+        print(f"testlab-version={plan['versions']['testlab']}")
+        PY
+
+    - name: Install TestLab
+      if: ${{ steps.config.outputs.testlab-version != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python -m pip install --quiet "tractusx-testlab==${TESTLAB_VERSION}"
+        echo "TestLab ${TESTLAB_VERSION} installed: $(command -v testlab)"
+
+    - name: Set up Helm
+      uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      with:
+        version: "${{ inputs.helm-version }}"
+
+    - name: Add Tractus-X Helm repo
+      shell: bash
+      run: |
+        helm repo add tractusx-dev https://eclipse-tractusx.github.io/charts/dev
+        helm repo update
+
+    - name: Prepare and validate the dataspace (pinned Umbrella chart)
+      shell: bash
+      run: |
+        set -euo pipefail
+        chart_dir="${RUNNER_TEMP}/umbrella"
+        rm -rf "${chart_dir}"
+        helm pull tractusx-dev/umbrella \
+          --version "${UMBRELLA_CHART_VERSION}" \
+          --untar --untardir "${RUNNER_TEMP}"
+
+        # IdentityHub and IssuerService ${IDENTITYHUB_CHART_VERSION}: Umbrella
+        # 26.03.00 pins both at chart v0.3.2 and a values file cannot move a
+        # subchart version, so the released charts are unpacked over the pinned
+        # ones by prepare_chart.py, which also restores the nested bundles
+        # Umbrella omits and declares one participant alias per participant.
+        ih_release="https://github.com/eclipse-tractusx/tractusx-identityhub/releases/download"
+        ih_charts="${RUNNER_TEMP}/identityhub-charts"
+        mkdir -p "${ih_charts}"
+        for chart in tractusx-identityhub-memory tractusx-issuerservice; do
+          curl --fail --location --silent --show-error \
+            "${ih_release}/${chart}-${IDENTITYHUB_CHART_VERSION}/${chart}-${IDENTITYHUB_CHART_VERSION}.tgz" \
+            --output "${ih_charts}/${chart}.tgz"
+          rm -rf "${ih_charts:?}/${chart}"
+          tar -xzf "${ih_charts}/${chart}.tgz" -C "${ih_charts}"
+        done
+        python "${TOOLBOX_DIR}/scripts/prepare_chart.py" \
+          --chart-dir "${chart_dir}" \
+          --identity-charts "${ih_charts}" \
+          --identityhub-version "${IDENTITYHUB_CHART_VERSION}" \
+          --plan "${TOOLBOX_PLAN}" \
+          --disabled-values "${TOOLBOX_OUT}/disabled.values.yaml"
+
+        profile_url="https://raw.githubusercontent.com/eclipse-tractusx/tractus-x-umbrella/${UMBRELLA_VALUES_REF}/charts/umbrella/values-adopter-decentralized-identityhub.yaml"
+        rendered="${RUNNER_TEMP}/umbrella-rendered.yaml"
+        helm template umbrella "${chart_dir}" \
+          --namespace "${UMBRELLA_NAMESPACE}" \
+          -f "${profile_url}" \
+          -f "${UMBRELLA_CI_VALUES}" \
+          -f "${TOOLBOX_OUT}/disabled.values.yaml" \
+          -f "${TOOLBOX_OUT}/participants.values.yaml" \
+          -f "${TOOLBOX_OUT}/vault-secrets.values.yaml" \
+          ${UMBRELLA_EXTRA_VALUES:+-f "${UMBRELLA_EXTRA_VALUES}"} \
+          > "${rendered}"
+
+        python "${TOOLBOX_DIR}/scripts/validate_manifest.py" \
+          --plan "${TOOLBOX_PLAN}" --manifest "${rendered}"
+        echo "UMBRELLA_CHART_DIR=${chart_dir}" >> "${GITHUB_ENV}"
+        echo "UMBRELLA_PROFILE_URL=${profile_url}" >> "${GITHUB_ENV}"
+        echo "UMBRELLA_RENDERED=${rendered}" >> "${GITHUB_ENV}"
+
+    # ------------------------------------------------------------------
+    # 2. Ephemeral Kubernetes cluster and its DNS
     # ------------------------------------------------------------------
     - name: Reclaim runner disk space
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         # The release pulls ~15 container images into the kind node, and the
@@ -199,18 +347,16 @@ runs:
         echo "Reclaim started in the background."
 
     - name: Set up kubectl
+      if: ${{ inputs.render-only != 'true' }}
       uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
       with:
         version: "${{ inputs.kubectl-version }}"
 
-    - name: Set up Helm
-      uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
-      with:
-        version: "${{ inputs.helm-version }}"
-
     - name: Create kind cluster
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
+        set -euo pipefail
         mkdir -p "${RUNNER_TEMP}/toolbox-bin"
         curl --fail --location --silent --show-error --output "${RUNNER_TEMP}/toolbox-bin/kind" \
           "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
@@ -240,6 +386,7 @@ runs:
           --config "${RUNNER_TEMP}/kind-config.yaml" --wait 5m
 
     - name: Install ingress-nginx and make it the default IngressClass
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -256,6 +403,7 @@ runs:
           -p '{"metadata":{"annotations":{"ingressclass.kubernetes.io/is-default-class":"true"}}}'
 
     - name: Point dataspace hostnames at the runner
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -266,6 +414,7 @@ runs:
         printf '  %s\n' ${DATASPACE_HOSTS}
 
     - name: Point in-cluster DNS at the ingress controller
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -335,319 +484,10 @@ runs:
         kubectl -n kube-system rollout status deployment/coredns --timeout=120s
 
     # ------------------------------------------------------------------
-    # 2. Deploy the dataspace: two EDCs, two IdentityHubs, DTRs, issuer
+    # 3. Deploy the dataspace, the stand-ins and the caller's applications
     # ------------------------------------------------------------------
-    - name: Add Tractus-X Helm repo
-      shell: bash
-      run: |
-        helm repo add tractusx-dev https://eclipse-tractusx.github.io/charts/dev
-        helm repo update
-
-    - name: Generate the connectors' in-memory vault secrets
-      shell: bash
-      run: |
-        set -euo pipefail
-        # `edc-runtime-memory` has no HashiCorp Vault client. Its vault is
-        # in-process and seeded once, from `tx.edc.vault.secrets` — a
-        # `alias:value;alias:value` string. Two things have to be in it:
-        #
-        #   * the EDR signing keypair. The data plane signs the token the
-        #     consumer presents at the public API and verifies it when the
-        #     token comes back, so both runtimes of one participant must
-        #     hold the same pair. Umbrella's `post-install-vault-setup` hook
-        #     still writes its own keypair into a HashiCorp vault nothing
-        #     reads any more; this generates a fresh pair per run rather
-        #     than committing a private key to this repository.
-        #   * the STS client secret, under the alias the connector is
-        #     configured with. Its value is the one the participant's
-        #     IdentityHub seeds its own context with, and both come from the
-        #     pinned profile rather than from anything generated here.
-        secrets="${RUNNER_TEMP}/umbrella-vault-secrets.values.yaml"
-        key="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)"
-        pub="$(printf '%s\n' "${key}" | openssl pkey -pubout)"
-        KEY="${key}" PUB="${pub}" python - "${secrets}" <<'PY'
-        import os
-        import sys
-
-        import yaml
-
-        def participant(alias: str, secret: str) -> dict:
-            """One participant's two runtimes, seeded identically."""
-            seed = ";".join(
-                (
-                    f"tokenSignerPrivateKey:{os.environ['KEY']}",
-                    f"tokenSignerPublicKey:{os.environ['PUB']}",
-                    f"{alias}:{secret}",
-                )
-            )
-            runtime = {"env": {"TX_EDC_VAULT_SECRETS": seed}}
-            return {
-                "tx-data-provider": {
-                    "dataspace-connector-bundle": {
-                        "tractusx-connector": {
-                            "controlplane": dict(runtime),
-                            "dataplane": dict(runtime),
-                        }
-                    }
-                }
-            }
-
-        with open(sys.argv[1], "w", encoding="utf-8") as handle:
-            yaml.safe_dump(
-                {
-                    "edc-provider": participant("provider-secret", "provider"),
-                    "edc-consumer": participant("consumer-secret", "consumer"),
-                },
-                handle,
-            )
-        PY
-        echo "UMBRELLA_VAULT_SECRETS=${secrets}" >> "${GITHUB_ENV}"
-
-    - name: Prepare and validate the developer toolbox (pinned Umbrella chart)
-      shell: bash
-      run: |
-        set -euo pipefail
-        chart_dir="${RUNNER_TEMP}/umbrella"
-        helm pull tractusx-dev/umbrella \
-          --version "${UMBRELLA_CHART_VERSION}" \
-          --untar --untardir "${RUNNER_TEMP}"
-
-        # Umbrella 26.03.00 packages the complete tx-data-provider bundles at
-        # the root but omits them from decentralized-identity-connector's
-        # nested tx-data-provider. Restore those same pinned dependencies.
-        source_bundles="${chart_dir}/charts/tx-data-provider/charts"
-        nested_provider="${chart_dir}/charts/decentralized-identity-connector/charts/tx-data-provider"
-        test -d "${source_bundles}"
-        test -d "${nested_provider}"
-        mkdir -p "${nested_provider}/charts"
-        cp -R "${source_bundles}/." "${nested_provider}/charts/"
-
-        # IdentityHub and IssuerService 0.4.0 — the EDC 0.16.0 -> 0.17.0
-        # upgrade. Umbrella 26.03.00 pins both at chart v0.3.2 and a values
-        # file cannot move a subchart version, so the released charts are
-        # unpacked over the pinned ones and the dependency declarations that
-        # name them are bumped to match. That bump is not cosmetic: helm
-        # resolves an aliased dependency by name *and* version, and left at
-        # v0.3.2 the second alias of decentralized-identity-connector
-        # (edc-provider) renders no IdentityHub at all — no error, just a
-        # missing participant.
-        ih_release="https://github.com/eclipse-tractusx/tractusx-identityhub/releases/download"
-        ih_charts="${RUNNER_TEMP}/identityhub-charts"
-        mkdir -p "${ih_charts}"
-        for chart in tractusx-identityhub-memory tractusx-issuerservice; do
-          curl --fail --location --silent --show-error \
-            "${ih_release}/${chart}-${IDENTITYHUB_CHART_VERSION}/${chart}-${IDENTITYHUB_CHART_VERSION}.tgz" \
-            --output "${ih_charts}/${chart}.tgz"
-          tar -xzf "${ih_charts}/${chart}.tgz" -C "${ih_charts}"
-        done
-
-        # The IdentityHub slot takes the *memory* chart, renamed to the
-        # dependency's own name so umbrella's `tractusx-identityhub` values
-        # keep addressing it. The rename is the whole substitution: the
-        # memory chart's values are a strict subset of the SQL chart's --
-        # the same `identityhub` block, minus `postgresql`, `vault` and
-        # `waitForDependencies` -- so the profile still applies and the keys
-        # it drops are exactly the ones an in-memory runtime has no use for.
-        # It also brings no subcharts, so the participant Postgres the SQL
-        # chart used to pull in is gone with it.
-        identityhub_slot="${chart_dir}/charts/decentralized-identity-connector/charts/tractusx-identityhub"
-        rm -rf "${identityhub_slot}" "${chart_dir}/charts/tractusx-issuerservice"
-        cp -R "${ih_charts}/tractusx-identityhub-memory" "${identityhub_slot}"
-        cp -R "${ih_charts}/tractusx-issuerservice" "${chart_dir}/charts/"
-        python3 - "${chart_dir}" "${IDENTITYHUB_CHART_VERSION}" <<'PY'
-        import pathlib
-        import re
-        import sys
-
-        chart_dir, version = pathlib.Path(sys.argv[1]), sys.argv[2]
-        slot = chart_dir / "charts/decentralized-identity-connector/charts/tractusx-identityhub"
-
-        def substitute(path, pattern, replacement):
-            text = path.read_text()
-            patched, count = re.subn(pattern, replacement, text)
-            if count != 1:
-                raise SystemExit(f"{path}: expected one match for {pattern!r}, found {count}")
-            path.write_text(patched)
-
-        # The memory chart answers to the dependency's name from here on.
-        substitute(
-            slot / "Chart.yaml",
-            r"(?m)^name: tractusx-identityhub-memory$",
-            "name: tractusx-identityhub",
-        )
-        declarations = {
-            chart_dir / "charts/decentralized-identity-connector/Chart.yaml": "tractusx-identityhub",
-            chart_dir / "Chart.yaml": "tractusx-issuerservice",
-        }
-        for path, name in declarations.items():
-            substitute(
-                path,
-                rf"(name: {name}\n  repository: [^\n]+\n  version: )\S+",
-                rf"\g<1>{version}",
-            )
-        PY
-
-        profile_url="https://raw.githubusercontent.com/eclipse-tractusx/tractus-x-umbrella/${UMBRELLA_VALUES_REF}/charts/umbrella/values-adopter-decentralized-identityhub.yaml"
-        rendered="${RUNNER_TEMP}/umbrella-rendered.yaml"
-        helm template umbrella "${chart_dir}" \
-          --namespace "${UMBRELLA_NAMESPACE}" \
-          -f "${profile_url}" \
-          -f "${UMBRELLA_CI_VALUES}" \
-          -f "${UMBRELLA_VAULT_SECRETS}" \
-          ${UMBRELLA_EXTRA_VALUES:+-f "${UMBRELLA_EXTRA_VALUES}"} \
-          > "${rendered}"
-
-        python - "${rendered}" <<'PY'
-        import sys
-        from collections import Counter
-
-        import yaml
-
-        expected_deployments = {
-            "provider-dtr",
-            "umbrella-consumer-connector-controlplane",
-            "umbrella-consumer-connector-dataplane",
-            "umbrella-consumer-identityhub",
-            "umbrella-issuerservice",
-            "umbrella-provider-connector-controlplane",
-            "umbrella-provider-connector-dataplane",
-            "umbrella-provider-identityhub",
-        }
-        # The vault-setup hooks are what put tokenSignerPrivateKey /
-        # tokenSignerPublicKey / tokenEncryptionAesKey into each participant's
-        # vault. They only render while the connector bundle owns the vault,
-        # so a values change that moves the vault elsewhere silently leaves
-        # every data-plane transfer unable to sign its EDR. Assert them.
-        # `umbrella-issuer-custom-attestation-claims-seeding` is deliberately
-        # not here: the in-memory IssuerService has no SQL store to seed, and
-        # ci/umbrella.values.yaml switches that hook off. Its claims are
-        # written onto the holder records by ci/issue_credentials.py instead.
-        expected_hooks = {
-            "umbrella-consumer-edc-post-install-vault-setup",
-            "umbrella-provider-edc-post-install-vault-setup",
-            "umbrella-post-install-bdrs-setup",
-        }
-        with open(sys.argv[1], encoding="utf-8") as stream:
-            documents = [document for document in yaml.safe_load_all(stream) if document]
-
-        def annotations(document):
-            return document.get("metadata", {}).get("annotations") or {}
-
-        deployments = {
-            document["metadata"]["name"]
-            for document in documents
-            if document.get("kind") == "Deployment"
-        }
-        missing = sorted(expected_deployments - deployments)
-        if missing:
-            raise SystemExit(f"Developer toolbox manifest is missing deployments: {', '.join(missing)}")
-
-        hooks = {
-            document["metadata"]["name"]
-            for document in documents
-            if document.get("kind") == "Job" and "helm.sh/hook" in annotations(document)
-        }
-        missing_hooks = sorted(expected_hooks - hooks)
-        if missing_hooks:
-            raise SystemExit(
-                f"Developer toolbox manifest is missing install hooks: {', '.join(missing_hooks)}"
-            )
-
-        install_resources = [
-            (
-                document.get("kind"),
-                document.get("metadata", {}).get("namespace", "umbrella"),
-                document.get("metadata", {}).get("name"),
-            )
-            for document in documents
-            if document.get("kind")
-            and document.get("metadata", {}).get("name")
-            and "helm.sh/hook" not in annotations(document)
-        ]
-        duplicates = sorted(key for key, count in Counter(install_resources).items() if count > 1)
-        if duplicates:
-            raise SystemExit(f"Developer toolbox manifest has duplicate resources: {duplicates}")
-
-        expected_routes = {
-            "provider-dsp.local": {"/api/v1/dsp"},
-            "provider-management.local": {"/management", "/control", "/catalog"},
-            "consumer-dsp.local": {"/api/v1/dsp"},
-            "consumer-management.local": {"/management", "/control", "/catalog"},
-        }
-        ingress_routes = {}
-        for document in documents:
-            if document.get("kind") != "Ingress":
-                continue
-            for rule in document.get("spec", {}).get("rules", []):
-                ingress_routes.setdefault(rule.get("host"), set()).update(
-                    path["path"] for path in rule.get("http", {}).get("paths", [])
-                )
-        wrong_routes = {
-            host: sorted(ingress_routes.get(host, set()))
-            for host, paths in expected_routes.items()
-            if ingress_routes.get(host) != paths
-        }
-        if wrong_routes:
-            raise SystemExit(f"Developer toolbox manifest has incorrect connector routes: {wrong_routes}")
-        # Public EDR endpoint lives on <participant>.local via the control
-        # plane's metrics slot. DSP must NOT share that host — the chart
-        # still derives the callback from ingresses[0], but peers must only
-        # reach protocol on *-dsp.local.
-        for host in ("provider.local", "consumer.local"):
-            paths = ingress_routes.get(host, set())
-            if "/api/public" not in paths:
-                raise SystemExit(f"{host} is missing the control-plane public path")
-            if "/api/v1/dsp" in paths:
-                raise SystemExit(f"{host} must not expose DSP; keep it on *-dsp.local")
-        prefixed_routes = sorted(
-            (host, path)
-            for host, paths in ingress_routes.items()
-            for path in paths
-            if path.startswith("/connector")
-        )
-        if prefixed_routes:
-            raise SystemExit(f"Developer toolbox manifest still has /connector routes: {prefixed_routes}")
-
-        # The tractusx-connector chart derives EDC_DSP_CALLBACK_ADDRESS from
-        # controlplane.ingresses[0] unless the env is pinned. A wrong host
-        # (e.g. participant.local instead of participant-dsp.local) makes the
-        # provider's agreement POST 404 at nginx and leaves the consumer stuck
-        # in REQUESTED.
-        expected_callbacks = {
-            "umbrella-provider-connector-controlplane": "http://provider-dsp.local/api/v1/dsp",
-            "umbrella-consumer-connector-controlplane": "http://consumer-dsp.local/api/v1/dsp",
-        }
-        actual_callbacks = {}
-        for document in documents:
-            if document.get("kind") != "Deployment":
-                continue
-            name = document.get("metadata", {}).get("name")
-            if name not in expected_callbacks:
-                continue
-            for container in document.get("spec", {}).get("template", {}).get("spec", {}).get("containers", []):
-                for env in container.get("env", []) or []:
-                    if env.get("name") == "EDC_DSP_CALLBACK_ADDRESS":
-                        actual_callbacks[name] = env.get("value")
-        wrong_callbacks = {
-            name: actual_callbacks.get(name)
-            for name, expected in expected_callbacks.items()
-            if actual_callbacks.get(name) != expected
-        }
-        if wrong_callbacks:
-            raise SystemExit(
-                "Developer toolbox control planes advertise the wrong DSP callback "
-                f"address: {wrong_callbacks}"
-            )
-
-        print("Developer toolbox manifest contains both connectors, the shared DTR, the issuer,")
-        print("the vault-setup hooks, isolated connector routes, and DSP callbacks.")
-        print("Ingress hosts:", ", ".join(sorted(h for h in ingress_routes if h)))
-        PY
-        echo "UMBRELLA_CHART_DIR=${chart_dir}" >> "${GITHUB_ENV}"
-        echo "UMBRELLA_PROFILE_URL=${profile_url}" >> "${GITHUB_ENV}"
-        echo "UMBRELLA_RENDERED=${rendered}" >> "${GITHUB_ENV}"
-
     - name: Pre-load release images into the kind node
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         # Best effort: nothing in this step may fail the toolbox.
@@ -696,6 +536,7 @@ runs:
         docker exec "${TOOLBOX_CLUSTER}-control-plane" df -h / || true
 
     - name: Deploy the Eclipse Tractus-X developer toolbox (decentralized IdentityHub profile)
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -uo pipefail
@@ -750,7 +591,7 @@ runs:
             # here, after its probe paths are fetched from inside the
             # cluster for the record, and its Deployment replaces it in
             # under a minute. The rule and its limits are in the script.
-            python3 "${WEDGE_SCRIPT}" \
+            python3 "${TOOLBOX_DIR}/scripts/restart_wedged_runtimes.py" \
               --namespace "${UMBRELLA_NAMESPACE}" \
               --state-dir "${RUNNER_TEMP}/wedged-runtimes" \
               --grace-seconds 120 --max-restarts 2 2>&1 || true
@@ -763,7 +604,9 @@ runs:
           --namespace "${UMBRELLA_NAMESPACE}" --create-namespace \
           -f "${UMBRELLA_PROFILE_URL}" \
           -f "${UMBRELLA_CI_VALUES}" \
-          -f "${UMBRELLA_VAULT_SECRETS}" \
+          -f "${TOOLBOX_OUT}/disabled.values.yaml" \
+          -f "${TOOLBOX_OUT}/participants.values.yaml" \
+          -f "${TOOLBOX_OUT}/vault-secrets.values.yaml" \
           ${UMBRELLA_EXTRA_VALUES:+-f "${UMBRELLA_EXTRA_VALUES}"} \
           --burst-limit 400 --qps 200 \
           --timeout "${HELM_TIMEOUT}" --wait
@@ -773,6 +616,7 @@ runs:
         exit "${status}"
 
     - name: Deploy in-cluster echo backend
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.echo == 'true' }}
       shell: bash
       run: |
         # Minimal HTTP backend the SUT's data plane proxies pulls to. Kept
@@ -786,16 +630,17 @@ runs:
           --for=condition=ready pod/tck-echo --timeout=120s
 
     - name: Deploy in-cluster stub caller
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.stub-caller == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
         # A stand-in system under test that calls back when told to, after
-        # a delay, from its own pod (see ci/stub_caller.py). Unlike the echo
+        # a delay, from its own pod (see scripts/stub_caller.py). Unlike the echo
         # backend it needs an ingress: the *script* talks to it, and the
         # script runs on the runner. The call it makes goes the other way,
         # to the runner's mock server, over the gateway checked below.
         kubectl create configmap tck-stub --namespace "${UMBRELLA_NAMESPACE}" \
-          --from-file=stub_caller.py="${STUB_CALLER_SCRIPT}"
+          --from-file=stub_caller.py="${TOOLBOX_DIR}/scripts/stub_caller.py"
         kubectl apply --namespace "${UMBRELLA_NAMESPACE}" -f - <<'EOF'
         apiVersion: v1
         kind: Pod
@@ -839,11 +684,12 @@ runs:
           --for=condition=ready pod/tck-stub --timeout=180s
 
     - name: Deploy in-cluster submodel server
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.submodel-server == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
         # The payload store behind the engine's registry entries (see
-        # ci/submodel_server.py). The Umbrella profile switches off both
+        # scripts/submodel_server.py). The Umbrella profile switches off both
         # `simple-data-backend` bundles, so nothing in the release serves a
         # submodel, and `digital-twin-registry/submodel/*` plus the whole Industry
         # Core journey would have no backend to address.
@@ -855,7 +701,7 @@ runs:
         # on the runner *and* in CoreDNS — so the address the upload step
         # publishes is an address a pod can use unchanged.
         kubectl create configmap tck-submodel --namespace "${UMBRELLA_NAMESPACE}" \
-          --from-file=submodel_server.py="${SUBMODEL_SERVER_SCRIPT}"
+          --from-file=submodel_server.py="${TOOLBOX_DIR}/scripts/submodel_server.py"
         kubectl apply --namespace "${UMBRELLA_NAMESPACE}" -f - <<'EOF'
         apiVersion: v1
         kind: Pod
@@ -898,7 +744,16 @@ runs:
         kubectl wait --namespace "${UMBRELLA_NAMESPACE}" \
           --for=condition=ready pod/tck-submodel --timeout=180s
 
+    - name: Deploy the applications
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.applications == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python "${TOOLBOX_DIR}/scripts/deploy_applications.py" \
+          --plan "${TOOLBOX_PLAN}" --cluster "${TOOLBOX_CLUSTER}"
+
     - name: Show dataspace pods
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         # `helm install --wait` above is the real readiness gate (it tracks
@@ -908,9 +763,10 @@ runs:
         kubectl get jobs -n "${UMBRELLA_NAMESPACE}" || true
 
     # ------------------------------------------------------------------
-    # 3. Make the dataspace usable: issue the participants' credentials
+    # 4. Make the dataspace usable: issue the participants' credentials
     # ------------------------------------------------------------------
-    - name: Issue Catena-X credentials to both participants
+    - name: Issue the participants' credentials
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -938,64 +794,17 @@ runs:
         fi
         echo "::add-mask::${super_user_key}"
 
-        python "${ISSUANCE_SCRIPT}" \
+        python "${TOOLBOX_DIR}/scripts/issue_credentials.py" \
+          --plan "${TOOLBOX_PLAN}" \
           --issuer-url "http://issuerservice.local" \
           --super-user-key "${super_user_key}"
 
     # ------------------------------------------------------------------
-    # 4. Discover what the chart didn't pin, then sanity-check reachability
+    # 5. Discover what the charts didn't pin, write what the caller gets,
+    #    then sanity-check reachability
     # ------------------------------------------------------------------
-    - name: Discover DTR ingress host and base URL
-      shell: bash
-      run: |
-        set -euo pipefail
-        DTR_HOST="$(kubectl get ingress provider-dtr \
-          -n "${UMBRELLA_NAMESPACE}" \
-          -o jsonpath='{.spec.rules[0].host}')"
-        # The DTR's ingress serves the registry under a rewritten prefix
-        # (`/semantics/registry(/|$)(.*)` -> `/$2`), so the API base URL is
-        # the host *plus* that prefix — the bare host answers 404.
-        DTR_PATH="$(kubectl get ingress provider-dtr \
-          -n "${UMBRELLA_NAMESPACE}" \
-          -o jsonpath='{.spec.rules[0].http.paths[0].path}')"
-        if [ -z "${DTR_HOST}" ] || [ -z "${DTR_PATH}" ]; then
-          echo "::error::Could not read the Digital Twin Registry ingress in namespace ${UMBRELLA_NAMESPACE}."
-          kubectl get ingress -n "${UMBRELLA_NAMESPACE}"
-          exit 1
-        fi
-        # Strip the regex tail, keeping the literal prefix.
-        DTR_PREFIX="${DTR_PATH%%(*}"
-        DTR_PREFIX="${DTR_PREFIX%/}"
-        DTR_BASE_URL="http://${DTR_HOST}${DTR_PREFIX}"
-        echo "Discovered DTR ingress: host=${DTR_HOST} path=${DTR_PATH}"
-        echo "DTR base URL: ${DTR_BASE_URL}"
-        # The same registry, addressed from inside the cluster. The ingress
-        # prefix above is a rewrite, so a pod talking to the Service reaches
-        # the application at its own root and the AAS API sits under
-        # `/api/v3`. dtr_consumer_dataplane.yaml registers an EDC asset with
-        # this address, because the address an EDC data plane dials is not
-        # the one the runner uses — and the port is a subchart default rather
-        # than something this profile pins, so it is read off the Service.
-        DTR_SERVICE_PORT="$(kubectl get svc provider-dtr \
-          -n "${UMBRELLA_NAMESPACE}" \
-          -o jsonpath='{.spec.ports[0].port}')"
-        if [ -z "${DTR_SERVICE_PORT}" ]; then
-          echo "::error::Could not read the provider-dtr Service port in namespace ${UMBRELLA_NAMESPACE}."
-          kubectl get svc -n "${UMBRELLA_NAMESPACE}"
-          exit 1
-        fi
-        DTR_INTERNAL_URL="http://provider-dtr.${UMBRELLA_NAMESPACE}.svc.cluster.local:${DTR_SERVICE_PORT}/api/v3"
-        echo "DTR in-cluster API: ${DTR_INTERNAL_URL}"
-        echo "DTR_HOST=${DTR_HOST}" >> "$GITHUB_ENV"
-        echo "DTR_BASE_URL=${DTR_BASE_URL}" >> "$GITHUB_ENV"
-        echo "DTR_INTERNAL_URL=${DTR_INTERNAL_URL}" >> "$GITHUB_ENV"
-
-        # ci/umbrella.values.yaml pins this host, so it is already in
-        # /etc/hosts — but add it if a chart bump ever changes it.
-        grep -qE "[[:space:]]${DTR_HOST}\$" /etc/hosts \
-          || echo "127.0.0.1 ${DTR_HOST}" | sudo tee -a /etc/hosts >/dev/null
-
     - name: Discover the address pods use to reach the runner
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -1016,7 +825,24 @@ runs:
         echo "Pods reach the runner at ${gateway}."
         echo "MOCK_SERVER_EXTERNAL_URL=http://${gateway}:${MOCK_SERVER_PORT}" >> "$GITHUB_ENV"
 
+    - name: Write the toolbox variables
+      id: variables
+      if: ${{ inputs.render-only != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The participants' fixed values plus what is discovered here: each
+        # Digital Twin Registry's ingress prefix and Service port. A caller
+        # merges its own on top before `testlab run --config`.
+        python "${TOOLBOX_DIR}/scripts/toolbox_outputs.py" \
+          --plan "${TOOLBOX_PLAN}" \
+          --out-dir "${TOOLBOX_OUT}" \
+          --mock-server-url "${MOCK_SERVER_EXTERNAL_URL}" \
+          >> "${GITHUB_OUTPUT}"
+        echo "TOOLBOX_PARTICIPANTS=${TOOLBOX_OUT}/participants.json" >> "${GITHUB_ENV}"
+
     - name: Preflight — check pods can reach the runner
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -1029,7 +855,7 @@ runs:
         standin=$!
         trap 'kill "${standin}" 2>/dev/null || true' EXIT
         sleep 1
-        status="$(bash "${PROBE_SCRIPT}" tck-reach "${UMBRELLA_NAMESPACE}" "${MOCK_SERVER_EXTERNAL_URL}/")"
+        status="$(bash "${TOOLBOX_DIR}/scripts/probe_from_pod.sh" tck-reach "${UMBRELLA_NAMESPACE}" "${MOCK_SERVER_EXTERNAL_URL}/")"
         if [ "${status}" != "200" ]; then
           echo "::error::A pod could not reach the runner at ${MOCK_SERVER_EXTERNAL_URL} (got '${status}')."
           exit 1
@@ -1037,6 +863,7 @@ runs:
         echo "A pod reached the runner at ${MOCK_SERVER_EXTERNAL_URL}."
 
     - name: Preflight — check the stub caller is reachable
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.stub-caller == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -1046,6 +873,7 @@ runs:
         echo "stub caller: reachable at ${STUB_CALLER_URL}"
 
     - name: Preflight — check the submodel server is reachable both ways
+      if: ${{ inputs.render-only != 'true' && steps.config.outputs.submodel-server == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -1059,90 +887,66 @@ runs:
         # only works because CoreDNS resolves the dataspace hostnames. A
         # failure here surfaces later as an EDC transfer that negotiates
         # cleanly and then answers 502 from the data plane.
-        status="$(bash "${PROBE_SCRIPT}" tck-submodel-reach "${UMBRELLA_NAMESPACE}" "${SUBMODEL_SERVER_URL}/health")"
+        status="$(bash "${TOOLBOX_DIR}/scripts/probe_from_pod.sh" tck-submodel-reach "${UMBRELLA_NAMESPACE}" "${SUBMODEL_SERVER_URL}/health")"
         if [ "${status}" != "200" ]; then
           echo "::error::A pod could not reach the submodel server at ${SUBMODEL_SERVER_URL} (got '${status}')."
           exit 1
         fi
         echo "submodel server: reachable at ${SUBMODEL_SERVER_URL}, from the runner and from a pod"
 
-    - name: Preflight — check connector and DTR reachability
+    - name: Preflight — check every connector and DTR answers
+      if: ${{ inputs.render-only != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
         query='{"@context":{"edc":"https://w3id.org/edc/v0.0.1/ns/"},"@type":"QuerySpec","offset":0,"limit":1}'
-        for participant in provider consumer; do
-          curl --fail-with-body --silent --show-error \
-            --header "X-Api-Key: password" \
-            --header "Content-Type: application/json" \
-            --request POST --data "${query}" \
-            "http://${participant}-management.local/management/v3/assets/request" \
-            > /dev/null
-          echo "${participant} management API: reachable"
-        done
-        # `--fail-with-body` earns its keep only if the body survives. It was
-        # being redirected to /dev/null, which is why a 404 here said nothing
-        # about whether nginx had matched no ingress rule or the registry
-        # itself had answered — the two have very different causes.
-        if ! dtr_body="$(curl --fail-with-body --location --silent --show-error \
-          "${DTR_BASE_URL}/api/v3/shell-descriptors" 2>&1)"; then
-          echo "::error::DTR API not reachable at ${DTR_BASE_URL}/api/v3/shell-descriptors"
-          printf '%s\n' "${dtr_body}"
-          exit 1
-        fi
-        echo "provider DTR API: reachable at ${DTR_BASE_URL}"
-        # The same registry from inside the cluster, which is how the
-        # provider's data plane reaches it once dtr_consumer_dataplane.yaml
-        # has published it as an asset.
-        status="$(bash "${PROBE_SCRIPT}" tck-dtr-reach "${UMBRELLA_NAMESPACE}" "${DTR_INTERNAL_URL}/shell-descriptors")"
-        if [ "${status}" != "200" ]; then
-          echo "::error::A pod could not reach the DTR API at ${DTR_INTERNAL_URL} (got '${status}')."
-          exit 1
-        fi
-        echo "provider DTR API: reachable in-cluster at ${DTR_INTERNAL_URL}"
-
-    # ------------------------------------------------------------------
-    # 5. Hand the dataspace to the caller
-    # ------------------------------------------------------------------
-    - name: Write the toolbox variables
-      id: variables
-      shell: bash
-      run: |
-        set -euo pipefail
-        # The Umbrella's fixed values plus the values discovered above. A
-        # caller merges its own on top before `testlab run --config`.
-        file="${RUNNER_TEMP}/developer-toolbox.vars.yaml"
-        product="http://tck-echo.${UMBRELLA_NAMESPACE}.svc.cluster.local"
-        PRODUCT_INTERNAL_URL="${product}" python - "${file}" <<'PY'
-        import os
-        import pathlib
+        # One line per deployed participant: name, management URL, API key,
+        # DTR base URL, DTR in-cluster URL (empty when it has none).
+        python - "${TOOLBOX_PARTICIPANTS}" > "${RUNNER_TEMP}/preflight.tsv" <<'PY'
+        import json
         import sys
 
-        import yaml
-
-        variables = yaml.safe_load(pathlib.Path(os.environ["TCK_CONFIG"]).read_text())["variables"]
-        variables.update(
-            {
-                "infrastructure.sut.dtr.base_url": os.environ["DTR_BASE_URL"],
-                "infrastructure.engine.dtr.base_url": os.environ["DTR_BASE_URL"],
-                "dtr_internal_url": os.environ["DTR_INTERNAL_URL"],
-                "mock_server_external_url": os.environ["MOCK_SERVER_EXTERNAL_URL"],
-                "stub_caller_url": os.environ["STUB_CALLER_URL"],
-                # A stand-in for "a product behind the provider's connector":
-                # the echo service deployed above. A project that tests a real
-                # product overrides it in its own config file.
-                "product_internal_url": os.environ["PRODUCT_INTERNAL_URL"],
-            }
-        )
-        pathlib.Path(sys.argv[1]).write_text(yaml.safe_dump({"variables": variables}, sort_keys=True))
-        print("\n".join(sorted(variables)))
+        for record in json.load(open(sys.argv[1], encoding="utf-8")):
+            if record["external"]:
+                continue
+            connector = record["connector"] or {}
+            dtr = record["dtr"] or {}
+            print("\t".join((
+                record["name"],
+                connector.get("management_url", ""),
+                connector.get("api_key", ""),
+                dtr.get("base_url", ""),
+                dtr.get("internal_url", ""),
+            )))
         PY
-        {
-          echo "variables-file=${file}"
-          echo "dtr-base-url=${DTR_BASE_URL}"
-          echo "dtr-internal-url=${DTR_INTERNAL_URL}"
-          echo "mock-server-external-url=${MOCK_SERVER_EXTERNAL_URL}"
-          echo "stub-caller-url=${STUB_CALLER_URL}"
-          echo "submodel-server-url=${SUBMODEL_SERVER_URL}"
-          echo "product-internal-url=${product}"
-        } >> "${GITHUB_OUTPUT}"
+        while IFS=$'\t' read -r name management api_key dtr_url dtr_internal; do
+          if [ -n "${management}" ]; then
+            curl --fail-with-body --silent --show-error \
+              --header "X-Api-Key: ${api_key}" \
+              --header "Content-Type: application/json" \
+              --request POST --data "${query}" \
+              "${management}/v3/assets/request" > /dev/null
+            echo "${name} management API: reachable"
+          fi
+          if [ -n "${dtr_url}" ]; then
+            # `--fail-with-body` earns its keep only if the body survives: a
+            # 404 from nginx matching no ingress rule and one from the registry
+            # itself have very different causes.
+            if ! dtr_body="$(curl --fail-with-body --location --silent --show-error \
+              "${dtr_url}/api/v3/shell-descriptors" 2>&1)"; then
+              echo "::error::${name} DTR API not reachable at ${dtr_url}/api/v3/shell-descriptors"
+              printf '%s\n' "${dtr_body}"
+              exit 1
+            fi
+            echo "${name} DTR API: reachable at ${dtr_url}"
+            # The same registry from inside the cluster, which is how a
+            # provider's data plane reaches it once it is published as an asset.
+            status="$(bash "${TOOLBOX_DIR}/scripts/probe_from_pod.sh" "tck-${name}-dtr-reach" \
+              "${UMBRELLA_NAMESPACE}" "${dtr_internal}/shell-descriptors")"
+            if [ "${status}" != "200" ]; then
+              echo "::error::A pod could not reach the ${name} DTR API at ${dtr_internal} (got '${status}')."
+              exit 1
+            fi
+            echo "${name} DTR API: reachable in-cluster at ${dtr_internal}"
+          fi
+        done < "${RUNNER_TEMP}/preflight.tsv"
