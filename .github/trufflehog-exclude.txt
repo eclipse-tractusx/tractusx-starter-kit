@@ -1,5 +1,5 @@
 # Paths TruffleHog skips (one regular expression per line).
-# umbrella.values.yaml: an earlier commit on the developer toolbox branch held the DTR data source
-# URL jdbc:postgresql://provider-dtr-postgresql:5432/dtr, an in-cluster hostname without credentials,
-# which TruffleHog reports as an unverified JDBC secret. Remove this entry once that history is on main.
+# umbrella.values.yaml: an earlier commit held the DTR data source URL, an in-cluster hostname
+# without credentials, which TruffleHog reports as an unverified JDBC secret.
 developer-toolbox/values/umbrella\.values\.yaml
+\.github/trufflehog-exclude\.txt
