@@ -1,3 +1,6 @@
+# kics-scan disable=4a20ebac-1060-4c81-95d1-1f7f620e983b,48a5beba-e4c0-4584-a2aa-e6894e4cf424
+# LimitRange and ResourceQuota are namespace policies of the cluster the toolbox
+# deploys into, not of this manifest; a quota here would also cap the whole Umbrella release.
 #################################################################################
 # Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
@@ -48,7 +51,7 @@ spec:
     seccompProfile: { type: RuntimeDefault }
   containers:
     - name: submodel
-      image: python:3.12-alpine
+      image: python:3.12-alpine@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89
       imagePullPolicy: Always
       env: [{ name: PYTHONDONTWRITEBYTECODE, value: "1" }]
       command: ["python", "/submodel/submodel_server.py", "--port", "8080"]

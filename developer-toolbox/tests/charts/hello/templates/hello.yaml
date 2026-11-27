@@ -1,3 +1,6 @@
+# kics-scan disable=4a20ebac-1060-4c81-95d1-1f7f620e983b,48a5beba-e4c0-4584-a2aa-e6894e4cf424,e84eaf4d-2f45-47b2-abe8-e581b06deb66
+# LimitRange and ResourceQuota (and the namespace boundary check) are namespace policies of the cluster the toolbox
+# deploys into, not of this manifest; a quota here would also cap the whole Umbrella release.
 #################################################################################
 # Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
@@ -35,7 +38,7 @@ spec:
     seccompProfile: { type: RuntimeDefault }
   containers:
     - name: whoami
-      image: traefik/whoami:v{{ .Chart.AppVersion }}
+      image: traefik/whoami:v{{ .Chart.AppVersion }}@{{ .Values.imageDigest }}
       imagePullPolicy: Always
       args: ["--name", {{ .Values.message | quote }}, "--port", "8080"]
       ports: [{ containerPort: 8080 }]
