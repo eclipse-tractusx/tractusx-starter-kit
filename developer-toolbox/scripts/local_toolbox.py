@@ -277,19 +277,51 @@ def _helm_binary(version: str, system: str, arch: str) -> bytes:
         return member.read()
 
 
-def require_docker(toolbox: Toolbox) -> None:
+def memory_wanted(plan: dict) -> float:
+    """About how many GB the dataspace needs. Measured on Docker Desktop:
+    two connectors without a registry run in 2.6 GB and fit a 4.2 GB cap; with
+    a registry and the stand-ins they do not fit 4.2 GB."""
+    deployed = [participant for participant in plan["participants"] if participant["deployed"]]
+    connectors = sum(1 for participant in deployed if participant["connector"])
+    registries = sum(1 for participant in deployed if participant["dtr"])
+    return 1.5 + 1.25 * connectors + 1.5 * registries + 0.25 * len(plan["applications"])
+
+
+def _gigabytes(size: str) -> float | None:
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)([kmg]?)b?", size.strip().lower())
+    if not match:
+        return None
+    return float(match[1]) / {"": 2**30, "k": 2**20, "m": 2**10, "g": 1}[match[2]]
+
+
+def oom_kills(toolbox: Toolbox) -> int:
+    """How often the kernel stopped a process in the cluster for lack of memory."""
+    result = toolbox.run("docker", "exec", toolbox.node, "cat", "/sys/fs/cgroup/memory.events",
+                         capture=True, check=False, quiet=True)
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "oom_kill":
+            return int(value)
+    return 0
+
+
+def require_docker(toolbox: Toolbox, cap: str) -> None:
     result = toolbox.run("docker", "info", "--format", "{{.MemTotal}} {{.NCPU}}", capture=True, check=False, quiet=True)
     if result.returncode != 0:
         raise ToolboxError("Docker is not running. Start it (Docker Desktop: `open -a Docker`) and try again.")
     memory, cpus = (int(value) for value in result.stdout.split())
     note(f"Docker: {cpus} CPUs, {memory / 2**30:.1f} GB memory.")
     gigabytes = memory / 2**30
-    participants = toolbox.plan["participants"]
-    connectors = sum(1 for participant in participants if participant["deployed"] and participant["connector"])
-    wanted = 3 + 1.5 * connectors
+    limit = "Docker"
+    if cap:
+        capped = _gigabytes(cap)
+        if capped is None:
+            raise ToolboxError(f"--memory {cap}: give it as Docker takes it, for example 6g or 4500m.")
+        gigabytes, limit = min(gigabytes, capped), "the --memory cap"
+    wanted = memory_wanted(toolbox.plan)
     if gigabytes < wanted:
-        warn(f"{connectors} connectors want about {wanted:.0f} GB for Docker and it has {gigabytes:.1f} GB. "
-             "Give Docker more memory, stop other containers, or start fewer participants "
+        warn(f"This dataspace wants about {wanted:.1f} GB and {limit} allows {gigabytes:.1f} GB. "
+             "Allow more, stop other containers, or start fewer participants "
              "(examples/minimal.yaml is the smallest).")
 
 
@@ -561,6 +593,15 @@ def install_release(toolbox: Toolbox, plan: dict, timeout: str) -> None:
             *release_values(toolbox, plan, pathlib.Path(extra) if extra else None),
             "--burst-limit", "400", "--qps", "200", "--timeout", timeout, "--wait",
         )
+    except ToolboxError as error:
+        kills = oom_kills(toolbox)
+        if kills:
+            raise ToolboxError(
+                f"{error} The cluster ran out of memory: the kernel stopped {kills} processes in it. "
+                f"This dataspace wants about {memory_wanted(plan):.1f} GB; give Docker (or --memory) more, "
+                "or start fewer participants. `toolbox down` removes this one."
+            ) from error
+        raise
     finally:
         done.set()
 
@@ -581,8 +622,9 @@ def deploy_stand_ins(toolbox: Toolbox, plan: dict) -> None:
             continue
         step(f"Deploying the {manifest.replace('-', ' ')}")
         toolbox.kubectl("create", "configmap", name, "--namespace", ns, f"--from-file={script}={SCRIPTS / script}")
-        toolbox.kubectl("apply", "--namespace", ns, "-f",
-                        str(TOOLBOX_DIR / "values" / "stand-ins" / f"{manifest}.yaml"))
+        documents = (TOOLBOX_DIR / "values" / "stand-ins" / f"{manifest}.yaml").read_text()
+        documents = re.sub(r"(?m)^  namespace: umbrella$", f"  namespace: {ns}", documents)
+        toolbox.kubectl("apply", "-f", "-", stdin=documents)
         toolbox.kubectl("wait", "--namespace", ns, "--for=condition=ready", f"pod/{name}", "--timeout=180s")
 
 
@@ -700,7 +742,7 @@ def command_up(arguments: argparse.Namespace) -> int:
     shutil.rmtree(toolbox.state, ignore_errors=True)
     started = time.monotonic()
     plan = render(toolbox, arguments)
-    require_docker(toolbox)
+    require_docker(toolbox, arguments.memory)
     install_testlab(plan["versions"]["testlab"])
 
     create_cluster(toolbox, arguments.kind_node_image or toolbox.defaults["kind-node-image"], arguments.memory)

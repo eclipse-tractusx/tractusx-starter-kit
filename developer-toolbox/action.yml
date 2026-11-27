@@ -561,8 +561,8 @@ runs:
         # to the runner's mock server, over the gateway checked below.
         kubectl create configmap tck-stub --namespace "${UMBRELLA_NAMESPACE}" \
           --from-file=stub_caller.py="${TOOLBOX_DIR}/scripts/stub_caller.py"
-        kubectl apply --namespace "${UMBRELLA_NAMESPACE}" \
-          -f "${TOOLBOX_DIR}/values/stand-ins/stub-caller.yaml"
+        sed "s/^  namespace: umbrella$/  namespace: ${UMBRELLA_NAMESPACE}/" \
+          "${TOOLBOX_DIR}/values/stand-ins/stub-caller.yaml" | kubectl apply -f -
         kubectl wait --namespace "${UMBRELLA_NAMESPACE}" \
           --for=condition=ready pod/tck-stub --timeout=180s
 
@@ -585,8 +585,8 @@ runs:
         # publishes is an address a pod can use unchanged.
         kubectl create configmap tck-submodel --namespace "${UMBRELLA_NAMESPACE}" \
           --from-file=submodel_server.py="${TOOLBOX_DIR}/scripts/submodel_server.py"
-        kubectl apply --namespace "${UMBRELLA_NAMESPACE}" \
-          -f "${TOOLBOX_DIR}/values/stand-ins/submodel-server.yaml"
+        sed "s/^  namespace: umbrella$/  namespace: ${UMBRELLA_NAMESPACE}/" \
+          "${TOOLBOX_DIR}/values/stand-ins/submodel-server.yaml" | kubectl apply -f -
         kubectl wait --namespace "${UMBRELLA_NAMESPACE}" \
           --for=condition=ready pod/tck-submodel --timeout=180s
 

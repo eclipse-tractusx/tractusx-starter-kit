@@ -88,9 +88,12 @@ my-app:dev .`, then `images: [my-app:dev]`), or on your machine, talking to the 
 URLs. A pod reaches your machine at the address `mock_server_external_url` names in the
 variables file.
 
-Keep the dataspace small: two connectors need about 4 GB of memory for Docker, and every
-further connector about 1.5 GB more. [`examples/minimal.yaml`](examples/minimal.yaml) is the
-smallest: two connectors, no registry, no stand-ins.
+Keep the dataspace small. [`examples/minimal.yaml`](examples/minimal.yaml), two connectors with
+no registry and no stand-ins, runs in about 2.6 GB and fits a 4 GB cap. The default, which adds
+a registry and the stand-ins, does not fit 4 GB: give it 6 GB. Count about 1.25 GB more for
+every further connector, and 1.5 GB for every further registry. `up` warns before it starts a
+dataspace that is larger than Docker, or `--memory`, allows. If the cluster runs out of
+memory anyway, `up` says so, rather than only reporting that Helm timed out.
 
 ## Configure it
 
