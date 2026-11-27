@@ -31,6 +31,9 @@ kind cluster on your Docker:
   ./developer-toolbox/toolbox kubectl get pods -A
   ./developer-toolbox/toolbox down
 
+Installed with developer-toolbox/install.sh, the same command is `tx-toolbox`,
+from any folder: `tx-toolbox up --config minimal`.
+
 Everything it creates is in one place: the kind cluster, a kubeconfig of its
 own (your current kubectl context is never used or changed), a block in
 /etc/hosts between markers, and a state folder under ~/.tractusx-developer-toolbox.
@@ -69,6 +72,10 @@ SCRIPTS = pathlib.Path(__file__).resolve().parent
 TOOLBOX_DIR = SCRIPTS.parent
 HOME = pathlib.Path(os.environ.get("TOOLBOX_HOME", pathlib.Path.home() / ".tractusx-developer-toolbox"))
 DEFAULT_NAME = os.environ.get("TOOLBOX_NAME", "tractusx-toolbox")
+# What the command is called in messages: `toolbox` from a clone, `tx-toolbox`
+# once install.sh installed it.
+PROG = os.environ.get("TOOLBOX_PROG") or "toolbox"
+EXAMPLES = TOOLBOX_DIR / "examples"
 HOSTS_FILE = pathlib.Path("/etc/hosts")
 HELM_REPO = "https://eclipse-tractusx.github.io/charts/dev"
 IDENTITYHUB_RELEASES = "https://github.com/eclipse-tractusx/tractusx-identityhub/releases/download"
@@ -149,7 +156,7 @@ class Toolbox:
     def plan(self) -> dict:
         path = self.state / "plan.json"
         if not path.exists():
-            raise ToolboxError(f"No dataspace '{self.name}' here. Start one with `toolbox up`.")
+            raise ToolboxError(f"No dataspace '{self.name}' here. Start one with `{PROG} up`.")
         return json.loads(path.read_text())
 
     @property
@@ -508,7 +515,7 @@ def create_cluster(toolbox: Toolbox, node_image: str, memory: str) -> None:
         with contextlib.suppress(OSError), socket.create_connection(("127.0.0.1", port), timeout=1):
             raise ToolboxError(
                 f"Something on this machine already listens on port {port}, which the dataspace's ingress needs. "
-                "Stop it (another toolbox: `toolbox down`), then try again."
+                f"Stop it (another toolbox: `{PROG} down`), then try again."
             )
     toolbox.run("kind", "create", "cluster", "--name", toolbox.name, "--image", node_image,
                 "--config", str(TOOLBOX_DIR / "values" / "kind-config.yaml"),
@@ -599,7 +606,7 @@ def install_release(toolbox: Toolbox, plan: dict, timeout: str) -> None:
             raise ToolboxError(
                 f"{error} The cluster ran out of memory: the kernel stopped {kills} processes in it. "
                 f"This dataspace wants about {memory_wanted(plan):.1f} GB; give Docker (or --memory) more, "
-                "or start fewer participants. `toolbox down` removes this one."
+                f"or start fewer participants. `{PROG} down` removes this one."
             ) from error
         raise
     finally:
@@ -737,8 +744,8 @@ def command_up(arguments: argparse.Namespace) -> int:
     toolbox = Toolbox(arguments.name, arguments.namespace)
     ensure_tools(toolbox, ("docker", "openssl", "kind", "kubectl", "helm"))
     if toolbox.cluster_exists():
-        raise ToolboxError(f"The dataspace '{toolbox.name}' is already up. `toolbox info` shows it; "
-                           "`toolbox down` removes it.")
+        raise ToolboxError(f"The dataspace '{toolbox.name}' is already up. `{PROG} info` shows it; "
+                           f"`{PROG} down` removes it.")
     shutil.rmtree(toolbox.state, ignore_errors=True)
     started = time.monotonic()
     plan = render(toolbox, arguments)
@@ -751,9 +758,9 @@ def command_up(arguments: argparse.Namespace) -> int:
     if not hosts_ok:
         if not arguments.no_hosts:
             warn("Could not update /etc/hosts (sudo needs a terminal). The bring-up goes on; "
-                 "`toolbox hosts` adds them later.")
+                 f"`{PROG} hosts` adds them later.")
         else:
-            note("Skipped (--no-hosts). `toolbox hosts` adds them later.")
+            note(f"Skipped (--no-hosts). `{PROG} hosts` adds them later.")
     toolbox.save_settings(hosts=str(hosts_ok).lower())
 
     with pinned_hosts(toolbox.hosts):
@@ -797,9 +804,9 @@ def print_info(toolbox: Toolbox) -> None:
     print(f"  variables   {toolbox.state / 'developer-toolbox.vars.yaml'}")
     print(f"  kubeconfig  {toolbox.kubeconfig}")
     if testlab:
-        print(f"  TestLab     {testlab}: toolbox testlab run <tck> (adds --config with the variables file)")
+        print(f"  TestLab     {testlab}: {PROG} testlab run <tck> (adds --config with the variables file)")
     if settings.get("hosts") != "true":
-        print(f"\n  {_paint('33', 'The hostnames are not in /etc/hosts yet:')} run `toolbox hosts`.")
+        print(f"\n  {_paint('33', 'The hostnames are not in /etc/hosts yet:')} run `{PROG} hosts`.")
 
 
 def command_info(arguments: argparse.Namespace) -> int:
@@ -811,7 +818,7 @@ def command_info(arguments: argparse.Namespace) -> int:
         print((toolbox.state / "participants.json").read_text())
         return 0
     if not (toolbox.state / "participants.json").exists():
-        raise ToolboxError(f"The dataspace '{toolbox.name}' is not up. `toolbox up` starts it.")
+        raise ToolboxError(f"The dataspace '{toolbox.name}' is not up. `{PROG} up` starts it.")
     print_info(toolbox)
     return 0
 
@@ -823,7 +830,7 @@ def command_hosts(arguments: argparse.Namespace) -> int:
         return 0
     if not add_hosts(toolbox):
         raise ToolboxError("Could not update /etc/hosts. Run this in a terminal (sudo asks for your password), "
-                           "or add the lines `toolbox hosts --print` prints yourself.")
+                           f"or add the lines `{PROG} hosts --print` prints yourself.")
     toolbox.save_settings(hosts="true")
     return 0
 
@@ -876,9 +883,43 @@ def command_render(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def config_path(value: str) -> pathlib.Path:
+    """--config: a file, or the name of one of the bundled examples (`minimal`)."""
+    path = pathlib.Path(value)
+    if not path.exists() and re.fullmatch(r"[a-z0-9-]+", value) and (EXAMPLES / f"{value}.yaml").is_file():
+        return EXAMPLES / f"{value}.yaml"
+    return path
+
+
+def example_summary(path: pathlib.Path) -> str:
+    """The first sentence of the comment under an example's license header."""
+    lines = path.read_text().splitlines()
+    start = max((i for i, line in enumerate(lines) if line.startswith("####")), default=-1) + 1
+    text = []
+    for line in lines[start:]:
+        if not line.strip() and not text:
+            continue
+        if not line.startswith("#"):
+            break
+        text.append(line.lstrip("# ").strip())
+    summary = " ".join(text)
+    return summary.split(": ")[0].split(". ")[0].rstrip(".")
+
+
+def command_examples(arguments: argparse.Namespace) -> int:
+    for path in sorted(EXAMPLES.glob("*.yaml")):
+        print(f"  {path.stem:<20} {example_summary(path)}")
+    print(f"\nStart one with `{PROG} up --config <name>`; copy it from {EXAMPLES} to change it.")
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
-        prog="toolbox", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+        prog=PROG, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+        # The installed command's own commands, which its launcher answers.
+        epilog=("the command itself:\n  version     Show where tx-toolbox was installed from.\n"
+                "  update      Install the newest toolbox of the same branch or tag.\n"
+                "  uninstall   Remove the tx-toolbox command.") if PROG == "tx-toolbox" else None,
     )
     commands = root.add_subparsers(dest="command", required=True, metavar="command")
 
@@ -890,7 +931,9 @@ def parser() -> argparse.ArgumentParser:
     for name, help_text in (("up", "Start the dataspace."),
                             ("render", "Only read the configuration and render and validate the release.")):
         command = add(name, help_text)
-        command.add_argument("--config", type=pathlib.Path, help="Your configuration, merged over toolbox.yaml.")
+        command.add_argument("--config", type=config_path,
+                             help="Your configuration, merged over toolbox.yaml, or the name of an example "
+                                  f"(`{PROG} examples` lists them).")
         command.add_argument("--workspace", type=pathlib.Path, default=pathlib.Path.cwd(),
                              help="The folder chart and values paths in the configuration are relative to "
                                   "(default: this one).")
@@ -920,6 +963,8 @@ def parser() -> argparse.ArgumentParser:
     command.set_defaults(handler=command_hosts)
 
     add("status", "Show the dataspace's pods.").set_defaults(handler=command_status)
+    commands.add_parser("examples", help="List the example configurations --config takes by name.") \
+        .set_defaults(handler=command_examples)
     add("down", "Delete the cluster, the /etc/hosts lines and the state.").set_defaults(handler=command_down)
 
     for tool in PASSTHROUGH:
@@ -946,7 +991,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{_paint('31', 'error:')} {error}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("\nInterrupted. `toolbox down` removes what was created.", file=sys.stderr)
+        print(f"\nInterrupted. `{PROG} down` removes what was created.", file=sys.stderr)
         return 130
 
 

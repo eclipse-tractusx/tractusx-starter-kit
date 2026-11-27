@@ -83,8 +83,13 @@ pull request; and the versions of the Umbrella chart, IdentityHub and TestLab. W
 configuration it holds two connectors with wallets, an IssuerService, a BDRS and a Digital
 Twin Registry. It is the [`developer-toolbox`](developer-toolbox) action in this repository.
 A reusable GitHub workflow in `tutorial-resources` calls it, runs a product's E2E test
-against it and reports the result on the pull request. On your machine,
-`./developer-toolbox/toolbox up` brings up the same dataspace from the same configuration.
+against it and reports the result on the pull request. On your machine, the `tx-toolbox`
+command brings up the same dataspace from the same configuration:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eclipse-tractusx/tractusx-starter-kit/main/developer-toolbox/install.sh | bash
+tx-toolbox up --config minimal
+```
 
 - [The developer toolbox action: configuration, inputs, outputs, usage](developer-toolbox/README.md)
 

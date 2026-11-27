@@ -101,6 +101,31 @@ jobs:
           ./developer-toolbox/toolbox --help
           ./developer-toolbox/toolbox render --config developer-toolbox/examples/multi-participant.yaml
 
+      # install.sh twice: from this clone (the command runs the clone), and as
+      # `curl … | bash` downloads it, from this pull request's commit.
+      - name: Install the tx-toolbox command
+        env:
+          TX_TOOLBOX_BIN: ${{ runner.temp }}/bin
+          TX_TOOLBOX_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          TX_TOOLBOX_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          export PATH="${TX_TOOLBOX_BIN}:${PATH}"
+          ./developer-toolbox/install.sh
+          tx-toolbox version | grep -q "${GITHUB_WORKSPACE}/developer-toolbox"
+          tx-toolbox examples | grep -q minimal
+          tx-toolbox --help | grep -q "uninstall"
+          (cd "${RUNNER_TEMP}" && tx-toolbox render --config minimal)
+
+          bash < developer-toolbox/install.sh
+          tx-toolbox version | grep -q "${TX_TOOLBOX_REPO}@${TX_TOOLBOX_REF}"
+          test -x "${TOOLBOX_HOME}/cli/kit/toolbox"
+          (cd "${RUNNER_TEMP}" && tx-toolbox render --config minimal)
+
+          tx-toolbox uninstall
+          test ! -e "${TX_TOOLBOX_BIN}/tx-toolbox"
+          test ! -e "${TOOLBOX_HOME}/cli"
+
       - name: Check the /etc/hosts block is added and removed cleanly
         run: |
           set -euo pipefail

@@ -41,12 +41,28 @@ in `tutorial-resources` calls it for them.
 ## Run it on your machine
 
 The same dataspace, from the same configuration, runs on your laptop in Docker, so you can
-develop a Tractus-X solution against it, or run the E2E tests before you push:
+develop a Tractus-X solution against it, or run the E2E tests before you push. Install the
+`tx-toolbox` command once, then use it from any folder:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eclipse-tractusx/tractusx-starter-kit/main/developer-toolbox/install.sh | bash
+tx-toolbox up --config minimal
+```
+
+The installer downloads the toolbox into `~/.tractusx-developer-toolbox/cli` and puts the
+`tx-toolbox` command in `~/.local/bin`, and says so if that folder is not on your `PATH` yet.
+`--ref` installs a branch, tag or commit other than `main`, `--bin` another folder for the
+command. `tx-toolbox version` shows what is installed, `tx-toolbox update` installs the newest
+toolbox of the same ref, and `tx-toolbox uninstall` removes the command again.
+
+To change the toolbox itself, run the installer from a clone instead: the command then runs
+that clone, so your changes take effect at once. Without installing anything,
+`./developer-toolbox/toolbox` in a clone takes the same commands.
 
 ```bash
 git clone https://github.com/eclipse-tractusx/tractusx-starter-kit
 cd tractusx-starter-kit
-./developer-toolbox/toolbox up --config developer-toolbox/examples/minimal.yaml
+./developer-toolbox/install.sh          # or: ./developer-toolbox/toolbox up --config minimal
 ```
 
 It needs Docker (Docker Desktop, Rancher Desktop, Colima or Docker Engine) and Python 3.10
@@ -54,19 +70,21 @@ or later, on macOS or Linux; on Windows, use WSL 2. kind, kubectl and Helm are t
 `PATH`; any that are missing are downloaded once, in the versions the action pins, and
 checked against their published checksums.
 
-`up` takes the same configuration file as the action's `config` input, and prints every
+`up` takes the same configuration file as the action's `config` input, or the name of an
+example (`tx-toolbox examples` lists them), and prints every
 participant at the end: its DID, BPN, management API and key, DSP address and registry.
 
 | Command | What it does |
 | --- | --- |
-| `toolbox up [--config FILE]` | Start the dataspace. `--memory 6g` caps what the cluster may use, so it cannot take memory from your other containers. `--no-hosts` leaves `/etc/hosts` alone. |
-| `toolbox info` | Show the participants, their URLs and API keys, and the variables file. `--json` prints them as JSON, `--variables-file` prints only that file's path. |
-| `toolbox status` | Show the dataspace's pods. |
-| `toolbox kubectl …`, `toolbox helm …` | Run kubectl or Helm against the dataspace, for example `toolbox kubectl logs -n umbrella deploy/umbrella-provider-connector-controlplane`. |
-| `toolbox testlab run my.tck` | Run TestLab, in the version `testlab.version` names, with the variables file. |
-| `toolbox hosts` | Add the dataspace hostnames to `/etc/hosts`; `--print` only prints the lines. |
-| `toolbox render [--config FILE]` | Only read the configuration, then render and validate the release: no cluster. |
-| `toolbox down` | Delete the cluster, the `/etc/hosts` lines and everything the toolbox stored. |
+| `tx-toolbox up [--config FILE]` | Start the dataspace. `--memory 6g` caps what the cluster may use, so it cannot take memory from your other containers. `--no-hosts` leaves `/etc/hosts` alone. |
+| `tx-toolbox info` | Show the participants, their URLs and API keys, and the variables file. `--json` prints them as JSON, `--variables-file` prints only that file's path. |
+| `tx-toolbox status` | Show the dataspace's pods. |
+| `tx-toolbox kubectl …`, `tx-toolbox helm …` | Run kubectl or Helm against the dataspace, for example `tx-toolbox kubectl logs -n umbrella deploy/umbrella-provider-connector-controlplane`. |
+| `tx-toolbox testlab run my.tck` | Run TestLab, in the version `testlab.version` names, with the variables file. |
+| `tx-toolbox hosts` | Add the dataspace hostnames to `/etc/hosts`; `--print` only prints the lines. |
+| `tx-toolbox render [--config FILE]` | Only read the configuration, then render and validate the release: no cluster. |
+| `tx-toolbox examples` | List the example configurations `--config` takes by name. |
+| `tx-toolbox down` | Delete the cluster, the `/etc/hosts` lines and everything the toolbox stored. |
 
 What it changes on your machine, and where:
 
@@ -78,7 +96,7 @@ What it changes on your machine, and where:
   lines, so your browser, your application and TestLab reach the participants by the names
   in their DIDs. Adding them needs sudo, which asks for your password. `up` brings the
   dataspace up without them when it cannot ask (`--no-hosts`, or no terminal); then run
-  `toolbox hosts` later.
+  `tx-toolbox hosts` later.
 - **A Python virtual environment and the downloaded tools**, also in
   `~/.tractusx-developer-toolbox`. Set `TOOLBOX_HOME` to put them somewhere else.
 
