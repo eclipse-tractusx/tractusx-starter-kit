@@ -11,9 +11,33 @@
 }
 
 .heroInner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: var(--space-7);
+  align-items: end;
   width: min(100% - 2.5rem, var(--content-width));
   margin: 0 auto;
   padding: var(--space-8) 0;
+}
+
+.install {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.installLabel {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.installLabel code {
+  color: var(--tx-gold);
 }
 
 .heroText {
@@ -234,6 +258,9 @@
 }
 
 @media (max-width: 960px) {
+  .heroInner {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .split {
     grid-template-columns: minmax(0, 1fr);
   }

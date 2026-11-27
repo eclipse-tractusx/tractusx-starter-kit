@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toolboxAppIcon, toolboxLogo } from "../../catalog/brand";
-import { toolboxPin } from "../../catalog/releases";
+import { TOOLBOX_INSTALLER, toolboxPin } from "../../catalog/releases";
 import { href } from "../../router";
 import { Callout, Card, CodeBlock, Icon, LinkButton, Section, Tabs, ThemedImage, type IconName } from "../../ui";
 import styles from "./ToolboxPage.module.css";
@@ -52,11 +52,18 @@ const ACTION = `jobs:
       - if: always()
         run: kind delete cluster --name "\${{ steps.toolbox.outputs.cluster-name }}" || true`;
 
-const LOCAL = `git clone https://github.com/eclipse-tractusx/tractusx-starter-kit
+const INSTALL = `curl -fsSL ${TOOLBOX_INSTALLER} | bash`;
+
+const LOCAL = `${INSTALL}
+
+tx-toolbox up --config minimal   # or your own toolbox.yaml
+tx-toolbox info                  # participants, URLs and API keys
+tx-toolbox down                  # removes everything again`;
+
+const CLONE = `git clone https://github.com/eclipse-tractusx/tractusx-starter-kit
 cd tractusx-starter-kit
-./developer-toolbox/toolbox up --config developer-toolbox/examples/minimal.yaml
-./developer-toolbox/toolbox info     # participants, URLs and API keys
-./developer-toolbox/toolbox down     # removes everything again`;
+./developer-toolbox/install.sh   # tx-toolbox now runs this clone
+tx-toolbox up --config minimal`;
 
 const CONFIG = `# ci/toolbox.yaml: merged over the default, so it only holds what you change.
 participants:
@@ -78,14 +85,16 @@ testlab:
   version: "${toolboxPin.testlab}"`;
 
 const COMMANDS: [string, string][] = [
-  ["toolbox up [--config FILE]", "Start the dataspace. --memory 6g caps what the cluster may use."],
-  ["toolbox info", "Show the participants, their URLs and API keys, and the variables file."],
-  ["toolbox status", "Show the dataspace's pods."],
-  ["toolbox testlab run my.tck", "Run TestLab, in the pinned version, with the variables file."],
-  ["toolbox kubectl …, toolbox helm …", "Run kubectl or Helm against the dataspace, never your own context."],
-  ["toolbox hosts", "Add the dataspace hostnames to /etc/hosts; --print only prints them."],
-  ["toolbox render", "Only read the configuration and render the release: no cluster."],
-  ["toolbox down", "Delete the cluster, the /etc/hosts lines and everything the toolbox stored."],
+  ["tx-toolbox up [--config FILE]", "Start the dataspace. --memory 6g caps what the cluster may use."],
+  ["tx-toolbox examples", "List the example configurations --config takes by name, such as minimal."],
+  ["tx-toolbox info", "Show the participants, their URLs and API keys, and the variables file."],
+  ["tx-toolbox status", "Show the dataspace's pods."],
+  ["tx-toolbox testlab run my.tck", "Run TestLab, in the pinned version, with the variables file."],
+  ["tx-toolbox kubectl …, tx-toolbox helm …", "Run kubectl or Helm against the dataspace, never your own context."],
+  ["tx-toolbox hosts", "Add the dataspace hostnames to /etc/hosts; --print only prints them."],
+  ["tx-toolbox render", "Only read the configuration and render the release: no cluster."],
+  ["tx-toolbox down", "Delete the cluster, the /etc/hosts lines and everything the toolbox stored."],
+  ["tx-toolbox update, tx-toolbox uninstall", "Install the newest toolbox, or remove the command again."],
 ];
 
 const STEPS = [
@@ -101,7 +110,7 @@ function withCode(text: string) {
 
 /** The guide to the Eclipse Tractus-X Developer Toolbox, before its configurator. */
 export function ToolboxPage() {
-  const [where, setWhere] = useState("ci");
+  const [where, setWhere] = useState("local");
   return (
     <>
       <section className={styles.hero}>
@@ -137,13 +146,20 @@ export function ToolboxPage() {
               </LinkButton>
             </div>
           </div>
+          {/* The hero is black in both themes, so the block takes the dark tokens. */}
+          <div className={styles.install} data-theme="dark">
+            <span className={styles.installLabel}>
+              <Icon name="terminal" size={15} /> Install the <code>tx-toolbox</code> command
+            </span>
+            <CodeBlock title="Terminal" language="shell" code={`${INSTALL}\ntx-toolbox up --config minimal`} />
+          </div>
         </div>
       </section>
 
       <Section
         eyebrow="What you get"
         title="Everything a data exchange needs, already wired"
-        lead={`Built from the Umbrella chart ${toolboxPin.umbrellaChart}, with every version pinned. The cluster lives as long as the job, or until you run toolbox down.`}
+        lead={`Built from the Umbrella chart ${toolboxPin.umbrellaChart}, with every version pinned. The cluster lives as long as the job, or until you run tx-toolbox down.`}
       >
         <div className={styles.contents}>
           {CONTENTS.map((item) => (
@@ -160,8 +176,9 @@ export function ToolboxPage() {
           value={where}
           onChange={setWhere}
           items={[
-            { id: "ci", label: "In GitHub Actions", icon: "github" },
             { id: "local", label: "On your machine", icon: "terminal" },
+            { id: "ci", label: "In GitHub Actions", icon: "github" },
+            { id: "clone", label: "From a clone", icon: "folder" },
           ]}
         >
           {where === "ci" ? (
@@ -181,16 +198,34 @@ export function ToolboxPage() {
               </div>
               <CodeBlock title=".github/workflows/e2e.yaml" language="yaml" code={ACTION} />
             </div>
+          ) : where === "clone" ? (
+            <div className={styles.split}>
+              <div className={styles.prose}>
+                <p>
+                  To change the toolbox itself, install the command from a clone of the Starter Kit: <code>tx-toolbox</code>{" "}
+                  then runs that clone, so your changes take effect at once.
+                </p>
+                <p>
+                  Without installing anything, <code>./developer-toolbox/toolbox</code> in the clone takes the same commands.
+                </p>
+              </div>
+              <CodeBlock title="Terminal" language="shell" code={CLONE} />
+            </div>
           ) : (
             <div className={styles.split}>
               <div className={styles.prose}>
+                <p>
+                  One line installs the <code>tx-toolbox</code> command into <code>~/.local/bin</code>; after that it works
+                  from any folder. <code>--config</code> takes your own <code>toolbox.yaml</code> or the name of an
+                  example. <code>tx-toolbox update</code> fetches the newest version.
+                </p>
                 <p>
                   You need Docker (Docker Desktop, Rancher Desktop, Colima or Docker Engine) and Python 3.10 or later, on
                   macOS or Linux; on Windows, WSL 2. kind, kubectl and Helm are downloaded once if they are missing, in the
                   pinned versions, and checked against their checksums.
                 </p>
                 <p>
-                  <code>up</code> prints every participant at the end: its DID, BPN, management API and key, DSP address and
+                  <code>tx-toolbox up</code> prints every participant at the end: its DID, BPN, management API and key, DSP address and
                   registry.
                 </p>
               </div>

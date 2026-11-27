@@ -43,6 +43,10 @@ export const toolboxPin = {
   testlab: "1.0.0a24",
 };
 
+/** The installer of the tx-toolbox command: `curl -fsSL … | bash`. */
+export const TOOLBOX_INSTALLER =
+  "https://raw.githubusercontent.com/eclipse-tractusx/tractusx-starter-kit/main/developer-toolbox/install.sh";
+
 export const defaultRelease = releases.find((release) => release.latest) ?? releases[0];
 
 export function releaseById(id: string): Release {
