@@ -1,7 +1,8 @@
 import { targets } from "../../catalog/targets";
 import { umbrellaCategories, umbrellaComponents, type UmbrellaCategory } from "../../catalog/umbrella";
 import { href } from "../../router";
-import { Badge, Card, Icon, LinkButton, Section } from "../../ui";
+import { toolboxLogo } from "../../catalog/brand";
+import { Badge, Card, Icon, LinkButton, Section, ThemedImage } from "../../ui";
 import styles from "./HomePage.module.css";
 
 const STEPS = [
@@ -71,6 +72,7 @@ export function HomePage() {
             <div key={target.id} className={styles.targetLink}>
               <Card
                 icon={target.icon}
+                media={target.mark && <ThemedImage src={target.mark} alt="" />}
                 eyebrow={<Badge tone="accent">{target.badge}</Badge>}
                 title={target.title}
                 footer={
@@ -102,6 +104,32 @@ export function HomePage() {
           ))}
         </div>
       </Section>
+
+      <section className={styles.toolbox} aria-labelledby="toolbox-title">
+        <div className={styles.toolboxInner}>
+          <ThemedImage className={styles.toolboxLogo} src={toolboxLogo} alt="Eclipse Tractus-X Developer Toolbox" />
+          <div className={styles.toolboxText}>
+            <h2 id="toolbox-title">A small dataspace for your tests, here and in CI</h2>
+            <p>
+              The Eclipse Tractus-X Developer Toolbox starts the same dataspace in kind with the Helm charts, on your machine
+              or in a GitHub runner. One toolbox.yaml decides the participants, the registries and the TestLab version.
+            </p>
+            <div className={styles.toolboxActions}>
+              <LinkButton variant="primary" size="lg" iconAfter="arrowRight" href={href("/configure?target=toolbox")}>
+                Configure the developer toolbox
+              </LinkButton>
+              <LinkButton
+                variant="secondary"
+                size="lg"
+                icon="github"
+                href="https://github.com/eclipse-tractusx/tractusx-starter-kit/tree/main/developer-toolbox"
+              >
+                Read the guide
+              </LinkButton>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <Section alt eyebrow="How it works" title="Three steps, no account">
         <ol className={styles.steps}>

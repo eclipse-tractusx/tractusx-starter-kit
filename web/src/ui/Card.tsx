@@ -4,6 +4,8 @@ import styles from "./Card.module.css";
 
 export interface CardProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   icon?: IconName;
+  /** An image (such as a product mark) in place of the icon. */
+  media?: ReactNode;
   eyebrow?: ReactNode;
   title?: ReactNode;
   footer?: ReactNode;
@@ -16,6 +18,7 @@ export interface CardProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
 /** A surface with an optional icon, eyebrow, title and footer. */
 export function Card({
   icon,
+  media,
   eyebrow,
   title,
   footer,
@@ -32,9 +35,11 @@ export function Card({
     .join(" ");
   return (
     <Tag className={classes} {...rest}>
-      {(icon || title || eyebrow) && (
+      {(icon || media || title || eyebrow) && (
         <header className={styles.header}>
-          {icon && (
+          {media ? (
+            <span className={styles.media}>{media}</span>
+          ) : icon && (
             <span className={styles.icon}>
               <Icon name={icon} size={20} />
             </span>

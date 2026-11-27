@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { targetInfo } from "../../catalog/targets";
 import { bundleFor } from "../../generators";
 import { hasProblems, validate } from "../../model/dataspace";
-import { Button, Stepper } from "../../ui";
+import { toolboxLogo } from "../../catalog/brand";
+import { Button, Stepper, ThemedImage } from "../../ui";
 import { ComponentsStep } from "./ComponentsStep";
 import styles from "./Configure.module.css";
 import { ParticipantsStep } from "./ParticipantsStep";
@@ -54,9 +55,19 @@ export function ConfigurePage({ target }: { target?: string }) {
   return (
     <div className={styles.page}>
       <div className={styles.banner}>
-        <div className={styles.bannerInner}>
-          <span>Eclipse Tractus-X Starter Kit</span>
-          <p>Configure your dataspace</p>
+        <div className={styles.bannerRow}>
+          <div className={styles.bannerInner}>
+            <span>Eclipse Tractus-X Starter Kit</span>
+            <p>Configure your dataspace</p>
+          </div>
+          {config.target === "toolbox" && (
+            <ThemedImage
+              className={styles.bannerLogo}
+              src={toolboxLogo}
+              surface="dark"
+              alt="Eclipse Tractus-X Developer Toolbox"
+            />
+          )}
         </div>
       </div>
       <div className={styles.layout}>

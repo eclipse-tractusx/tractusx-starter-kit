@@ -1,4 +1,5 @@
-import type { IconName } from "../ui";
+import type { IconName, ThemedSource } from "../ui";
+import { toolboxMark } from "./brand";
 import type { Target } from "../model/dataspace";
 
 /** The three things the configurator produces, as the site presents them. */
@@ -6,6 +7,8 @@ export interface TargetInfo {
   id: Target;
   title: string;
   icon: IconName;
+  /** A product mark shown in place of the icon. */
+  mark?: ThemedSource;
   badge: string;
   tagline: string;
   runsOn: string;
@@ -26,6 +29,7 @@ export const targets: TargetInfo[] = [
     id: "toolbox",
     title: "Developer toolbox",
     icon: "toolbox",
+    mark: toolboxMark,
     badge: "For tests and CI",
     tagline: "The same small dataspace in kind with the Helm charts, on your machine or in a GitHub runner.",
     runsOn: "Docker + kind",

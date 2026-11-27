@@ -1,0 +1,4 @@
+:global(:root[data-theme="dark"]) .forLight,
+:global(:root:not([data-theme="dark"])) .forDark {
+  display: none;
+}

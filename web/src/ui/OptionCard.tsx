@@ -6,6 +6,8 @@ export interface OptionCardProps {
   title: ReactNode;
   description?: ReactNode;
   icon?: IconName;
+  /** An image (such as a product mark) in place of the icon. */
+  media?: ReactNode;
   meta?: ReactNode;
   badge?: ReactNode;
   selected: boolean;
@@ -23,6 +25,7 @@ export function OptionCard({
   title,
   description,
   icon,
+  media,
   meta,
   badge,
   selected,
@@ -46,7 +49,9 @@ export function OptionCard({
       className={classes}
       onClick={locked ? undefined : onSelect}
     >
-      {icon && (
+      {media ? (
+        <span className={styles.media}>{media}</span>
+      ) : icon && (
         <span className={styles.icon}>
           <Icon name={icon} size={18} />
         </span>

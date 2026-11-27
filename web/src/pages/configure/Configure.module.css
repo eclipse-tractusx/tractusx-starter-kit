@@ -11,13 +11,28 @@
   color: #fff;
 }
 
+.bannerRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  align-items: center;
+  justify-content: space-between;
+  width: min(100% - 2.5rem, 84rem);
+  margin: 0 auto;
+  padding: var(--space-5) 0;
+}
+
 .bannerInner {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  width: min(100% - 2.5rem, 84rem);
-  margin: 0 auto;
-  padding: var(--space-6) 0;
+  min-width: 0;
+}
+
+.bannerLogo {
+  display: block;
+  width: min(20rem, 100%);
+  height: auto;
 }
 
 .bannerInner span {

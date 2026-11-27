@@ -11,3 +11,4 @@ export { Container, Section } from "./Section";
 export { Stepper, type StepItem } from "./Stepper";
 export { Tabs, type TabItem } from "./Tabs";
 export { Segmented, type SegmentedOption } from "./Segmented";
+export { ThemedImage, type ThemedSource } from "./ThemedImage";

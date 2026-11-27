@@ -1,6 +1,6 @@
 import { targets } from "../../catalog/targets";
 import type { Action, Config } from "../../model/dataspace";
-import { Badge, OptionCard, OptionGroup } from "../../ui";
+import { Badge, OptionCard, OptionGroup, ThemedImage } from "../../ui";
 
 export function TargetStep({ config, dispatch }: { config: Config; dispatch: (action: Action) => void }) {
   return (
@@ -9,6 +9,7 @@ export function TargetStep({ config, dispatch }: { config: Config; dispatch: (ac
         <OptionCard
           key={target.id}
           icon={target.icon}
+          media={target.mark && <ThemedImage src={target.mark} alt="" />}
           title={target.title}
           badge={<Badge tone="accent">{target.badge}</Badge>}
           description={target.tagline}
