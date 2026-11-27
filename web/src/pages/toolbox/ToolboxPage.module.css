@@ -70,12 +70,16 @@
 .downloads {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-5);
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.downloadsLabel {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
 }
 
 .requirements {
-  margin-top: var(--space-3);
   color: var(--fg-muted);
   font-size: var(--text-sm);
 }
@@ -326,5 +330,13 @@
 }
 
 .table td:last-child code {
+  white-space: nowrap;
+}
+
+.downloads .textLink {
+  align-self: center;
+}
+
+.requirements code {
   white-space: nowrap;
 }

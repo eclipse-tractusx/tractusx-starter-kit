@@ -163,6 +163,22 @@ export function ToolboxPage() {
             <div className={styles.installBody}>
               <h3>Install the command</h3>
               <CodeBlock title="Terminal" language="shell" code={INSTALL} wrap />
+              <div className={styles.downloads}>
+                <span className={styles.downloadsLabel}>Or download it:</span>
+                <LinkButton variant="secondary" icon="download" href="./install.sh" download="install.sh">
+                  install.sh
+                </LinkButton>
+                <LinkButton variant="secondary" icon="download" href={KIT_ZIP}>
+                  Starter Kit (.zip)
+                </LinkButton>
+                <a className={styles.textLink} href={INSTALLER_SOURCE} target="_blank" rel="noreferrer">
+                  Read install.sh <Icon name="external" size={14} />
+                </a>
+              </div>
+              <p className={styles.requirements}>
+                Needs Docker and Python 3.10 or later, on macOS or Linux; on Windows, in WSL 2. Run a downloaded installer
+                with <code>bash install.sh</code>.
+              </p>
             </div>
           </div>
           <div className={styles.installStep}>
@@ -173,21 +189,6 @@ export function ToolboxPage() {
             </div>
           </div>
         </div>
-        <div className={styles.downloads}>
-          <LinkButton variant="primary" size="lg" icon="download" href="./install.sh" download="install.sh">
-            Download install.sh
-          </LinkButton>
-          <LinkButton variant="secondary" size="lg" icon="download" href={KIT_ZIP}>
-            Download the Starter Kit (.zip)
-          </LinkButton>
-          <LinkButton variant="ghost" size="lg" icon="github" href={INSTALLER_SOURCE}>
-            Read install.sh
-          </LinkButton>
-        </div>
-        <p className={styles.requirements}>
-          Needs Docker and Python 3.10 or later, on macOS or Linux; on Windows, in WSL 2. A downloaded installer runs
-          with <code>bash install.sh</code>.
-        </p>
       </Section>
 
       <Section
