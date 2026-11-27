@@ -53,7 +53,7 @@ export function OptionCard({
         <span className={styles.media}>{media}</span>
       ) : icon && (
         <span className={styles.icon}>
-          <Icon name={icon} size={18} />
+          <Icon name={icon} size={24} />
         </span>
       )}
       <span className={styles.text}>

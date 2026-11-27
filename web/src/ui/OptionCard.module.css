@@ -40,8 +40,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 3rem;
+  height: 3rem;
   border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--fg-muted);
@@ -119,8 +119,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 3rem;
+  height: 3rem;
 }
 
 .media img {
